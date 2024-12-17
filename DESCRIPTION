@@ -2,7 +2,7 @@ Package: DropSift
 Type: Package
 Title: Distinguish nuclei/cells from empty droplets
 Version: 1.0
-Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,presto,e1071,logger,Seurat, data.table, cluster, methods, scales, rhdf5
+Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,presto,e1071,logger,Seurat,data.table, cluster, methods, scales, rhdf5
 Remotes: github::mojaveazure/seurat-disk, github::immunogenomics/presto
 Author: James Nemesh
 Maintainer: James Nemesh <nemesh@broadinstitute.org>

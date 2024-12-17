@@ -26,7 +26,7 @@ DefaultFeatureColumns
 
 \method{plotSvmNucleusCaller}{SvmNucleusCaller}(svmNucleusCaller)
 
-\method{print}{SvmNucleusCaller}(svmNucleusCaller, ...)
+print.SvmNucleusCaller(svmNucleusCaller, ...)
 }
 \arguments{
 \item{cellFeatures}{A data frame with columns: cell_barcode (unless dgeMatrix==NULL), num_reads, frac_contamination
