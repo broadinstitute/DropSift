@@ -1,0 +1,42 @@
+---
+title: "Using SvmNucleusCaller to estimate CellBender remove-background parameters"
+author: "Alec Wysoker"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Using SvmNucleusCaller to estimate CellBender remove-background parameters}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+library(Dropseq.nucleiselection)
+```
+
+# Estimating CellBender remove-background parameters
+
+```{r}
+data(svmNucleusCallerInputs)
+set.seed(1)
+svmNucleusCaller = SvmNucleusCaller(
+  svmNucleusCallerInputs$cellFeatures,
+  svmNucleusCallerInputs$dgeMatrix,
+  datasetName = "v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1",
+  useCBRBFeatures = FALSE,
+  forceTwoClusterSolution = TRUE)
+getCBRBArgs(svmNucleusCaller)
+```
+
+# Plotting the results
+
+This function generates a multi-page report with plots of the SVM results.
+
+```
+pdf("svmNucleusCallerCbrbReport.pdf")
+plotSvmNucleusCaller(svmNucleusCaller)
+dev.off()
+```
