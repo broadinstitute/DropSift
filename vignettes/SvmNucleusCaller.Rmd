@@ -14,7 +14,7 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
-library(Dropseq.nucleiselection)
+library(DropSift)
 ```
 
 # Running SvmNucleusCaller to distinguish nuclei from empties

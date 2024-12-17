@@ -1,4 +1,4 @@
-Package: Dropseq.nucleiselection
+Package: DropSift
 Type: Package
 Title: Distinguish nuclei/cells from empty droplets
 Version: 1.0

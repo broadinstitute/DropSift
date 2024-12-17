@@ -18,7 +18,7 @@ Data from a snRNA-seq experiment 2023-08-25_v3_Bamboo_18d_10X_RNAseq_Optiprep800
 }
 \examples{
 data(svmNucleusCallerInputs)
-svmNucleusCaller = Dropseq.nucleiselection::SvmNucleusCaller(svmNucleusCallerInputs$cellFeatures,
+svmNucleusCaller = DropSift::SvmNucleusCaller(svmNucleusCallerInputs$cellFeatures,
 svmNucleusCallerInputs$dgeMatrix, datasetName = "v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1",
 useCBRBFeatures = FALSE)
 
