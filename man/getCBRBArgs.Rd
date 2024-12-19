@@ -2,13 +2,17 @@
 % Please edit documentation in R/SvmNucleusCaller.R
 \name{getCBRBArgs}
 \alias{getCBRBArgs}
-\title{S3 gorp that should not need to be documented but R CMD check complains if it is not.}
+\title{Estimate CellBender remove-background arguments from an SvmNucleusCaller object}
 \usage{
 getCBRBArgs(svmNucleusCaller)
 }
 \arguments{
 \item{svmNucleusCaller}{an object of class SvmNucleusCaller(useCBRBFeatures=FALSE)}
 }
+\value{
+a list with two elements: total_droplets_included and expected_cells
+}
 \description{
-S3 gorp that should not need to be documented but R CMD check complains if it is not.
+After running the SVM with useCBRBFeatures=FALSE, get an estimate for --total-droplets-included and --expected-cells
+CellBender remove-background arguments.
 }

@@ -18,6 +18,9 @@ The column names must match the cell_barcode column in cellFeatures.  This may b
 NULL to suppress use of gene expression features.}
 }
 \description{
+Typically, the user will not need to call this function directly.
+}
+\details{
 If featureColumns is not NULL, assume the user has specified the features they want to use.  If featureColumns is NULL,
 the feature columns will be c("num_transcripts", "pct_intronic", "pct_mt").  If useCBRBFeatures is true,
 "frac_contamination" will be added to the featureColumns.  If dgeMatrix is not NULL,

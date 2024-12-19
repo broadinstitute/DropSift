@@ -2,13 +2,23 @@
 % Please edit documentation in R/SvmNucleusCaller.R
 \name{plotSvmNucleusCaller}
 \alias{plotSvmNucleusCaller}
-\title{S3 gorp that should not need to be documented but R CMD check complains if it is not.}
+\alias{plotSvmNucleusCaller.SvmNucleusCaller}
+\title{Send a standard set of plots (3 pages) to the current graphics device}
 \usage{
 plotSvmNucleusCaller(svmNucleusCaller)
+
+\method{plotSvmNucleusCaller}{SvmNucleusCaller}(svmNucleusCaller)
 }
 \arguments{
 \item{svmNucleusCaller}{an object of class SvmNucleusCaller}
 }
+\value{
+the input object, invisibly
+
+the input object
+}
 \description{
-S3 gorp that should not need to be documented but R CMD check complains if it is not.
+Send a standard set of plots (3 pages) to the current graphics device
+
+Send a standard set of plots (3 pages) to the current graphics device
 }

@@ -106,20 +106,21 @@ validateCellFeatures<-function (cellFeatures, features) {
 }
 
 
-#' The set of features to use if the user has not specified them explicitly.
-#' @export
-#' @rdname SvmNucleusCaller
 DefaultFeatureColumns = c("num_transcripts", "pct_intronic", "pct_mt")
 defaultFeatureColumnsStringRep = paste0('c("', paste(DefaultFeatureColumns, collapse = '", "'), '")')
 
-#' S3 gorp that should not need to be documented but R CMD check complains if it is not.
+#' Send a standard set of plots (3 pages) to the current graphics device
+#'
 #' @param svmNucleusCaller an object of class SvmNucleusCaller
+#' @return the input object, invisibly
 #' @export
 plotSvmNucleusCaller = function(svmNucleusCaller) {
   UseMethod("plotSvmNucleusCaller", svmNucleusCaller)
 }
 
 #' Configure featureColumns argument to SvmNucleusCaller.
+#'
+#' Typically, the user will not need to call this function directly.
 #'
 #' If featureColumns is not NULL, assume the user has specified the features they want to use.  If featureColumns is NULL,
 #' the feature columns will be `r toString(defaultFeatureColumnsStringRep)`.  If useCBRBFeatures is true,
@@ -142,9 +143,9 @@ configureFeatureColumns = function(featureColumns, useCBRBFeatures, dgeMatrix) {
 
 #' Send a standard set of plots (3 pages) to the current graphics device
 #'
-#' @inheritParams plotSvmNucleusCaller
+#' @inherit plotSvmNucleusCaller
 #' @return the input object
-#' @rdname SvmNucleusCaller
+#' @rdname plotSvmNucleusCaller
 #' @export
 plotSvmNucleusCaller.SvmNucleusCaller = function(svmNucleusCaller) {
   plots=svmNucleusCaller$plots
@@ -167,7 +168,6 @@ plotSvmNucleusCaller.default = function(svmNucleusCaller) {
   stop("plotSvmNucleusCaller not implemented for this class")
 }
 
-#' @rdname SvmNucleusCaller
 #' @param x an object of class SvmNucleusCaller
 #' @param ... Other arguments that are ignored
 #' @method print SvmNucleusCaller
@@ -190,20 +190,19 @@ print.SvmNucleusCaller = function(x,...) {
   invisible(svmNucleusCaller)
 }
 
-#' S3 gorp that should not need to be documented but R CMD check complains if it is not.
-#' @param svmNucleusCaller an object of class SvmNucleusCaller(useCBRBFeatures=FALSE)
-#' @export
-getCBRBArgs = function(svmNucleusCaller) {
-  UseMethod("getCBRBArgs", svmNucleusCaller)
-}
-
 #' Estimate CellBender remove-background arguments from an SvmNucleusCaller object
 #'
 #' After running the SVM with useCBRBFeatures=FALSE, get an estimate for --total-droplets-included and --expected-cells
 #' CellBender remove-background arguments.
 #'
-#' @inheritParams getCBRBArgs
+#' @param svmNucleusCaller an object of class SvmNucleusCaller(useCBRBFeatures=FALSE)
 #' @return a list with two elements: total_droplets_included and expected_cells
+#' @export
+getCBRBArgs = function(svmNucleusCaller) {
+  UseMethod("getCBRBArgs", svmNucleusCaller)
+}
+
+#' @inherit getCBRBArgs
 #' @export
 getCBRBArgs.SvmNucleusCaller = function(svmNucleusCaller) {
   if (contaminationColName %in% svmNucleusCaller$features) {
