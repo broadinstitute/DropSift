@@ -73,7 +73,7 @@ runIntronicSVM<-function (datasetName, cellFeaturesFile=NULL, dgeMatrixFile=NULL
     }
     plotSvmNucleusCaller(svmNucleusCaller)
     if (!is.null(outPDF)) {
-        dev.off()
+        grDevices::dev.off()
     }
 
     if (!is.null(outFeaturesFile)) {

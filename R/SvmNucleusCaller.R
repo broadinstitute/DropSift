@@ -106,19 +106,21 @@ validateCellFeatures<-function (cellFeatures, features) {
 }
 
 
-#' The set of features to use if the user has not specified them explicitly.
-#' @export
-#' @rdname SvmNucleusCaller
 DefaultFeatureColumns = c("num_transcripts", "pct_intronic", "pct_mt")
 defaultFeatureColumnsStringRep = paste0('c("', paste(DefaultFeatureColumns, collapse = '", "'), '")')
 
-#' @noRd
+#' Send a standard set of plots (3 pages) to the current graphics device
+#'
+#' @param svmNucleusCaller an object of class SvmNucleusCaller
+#' @return the input object, invisibly
 #' @export
 plotSvmNucleusCaller = function(svmNucleusCaller) {
   UseMethod("plotSvmNucleusCaller", svmNucleusCaller)
 }
 
 #' Configure featureColumns argument to SvmNucleusCaller.
+#'
+#' Typically, the user will not need to call this function directly.
 #'
 #' If featureColumns is not NULL, assume the user has specified the features they want to use.  If featureColumns is NULL,
 #' the feature columns will be `r toString(defaultFeatureColumnsStringRep)`.  If useCBRBFeatures is true,
@@ -139,11 +141,8 @@ configureFeatureColumns = function(featureColumns, useCBRBFeatures, dgeMatrix) {
   return(featureColumns)
 }
 
-#' Send a standard set of plots (3 pages) to the current graphics device
-#'
-#' @param svmNucleusCaller an object of class SvmNucleusCaller
-#' @return the input object
-#' @rdname SvmNucleusCaller
+#' @inherit plotSvmNucleusCaller
+#' @rdname plotSvmNucleusCaller
 #' @export
 plotSvmNucleusCaller.SvmNucleusCaller = function(svmNucleusCaller) {
   plots=svmNucleusCaller$plots
@@ -166,10 +165,12 @@ plotSvmNucleusCaller.default = function(svmNucleusCaller) {
   stop("plotSvmNucleusCaller not implemented for this class")
 }
 
-#' @rdname SvmNucleusCaller
-#' @param svmNucleusCaller an object of class SvmNucleusCaller
+#' @param x an object of class SvmNucleusCaller
+#' @param ... Other arguments that are ignored
+#' @method print SvmNucleusCaller
 #' @export
-print.SvmNucleusCaller = function(svmNucleusCaller,...) {
+print.SvmNucleusCaller = function(x,...) {
+  svmNucleusCaller = x
   if (is.null(svmNucleusCaller$cellProbabilityThreshold)) {
     cellProbabilityThreshold = "NULL"
   } else {
@@ -186,12 +187,6 @@ print.SvmNucleusCaller = function(svmNucleusCaller,...) {
   invisible(svmNucleusCaller)
 }
 
-#' @noRd
-#' @export
-getCBRBArgs = function(svmNucleusCaller) {
-  UseMethod("getCBRBArgs", svmNucleusCaller)
-}
-
 #' Estimate CellBender remove-background arguments from an SvmNucleusCaller object
 #'
 #' After running the SVM with useCBRBFeatures=FALSE, get an estimate for --total-droplets-included and --expected-cells
@@ -200,6 +195,13 @@ getCBRBArgs = function(svmNucleusCaller) {
 #' @param svmNucleusCaller an object of class SvmNucleusCaller(useCBRBFeatures=FALSE)
 #' @return a list with two elements: total_droplets_included and expected_cells
 #' @export
+getCBRBArgs = function(svmNucleusCaller) {
+  UseMethod("getCBRBArgs", svmNucleusCaller)
+}
+
+#' @inherit getCBRBArgs
+#' @export
+#' @rdname getCBRBArgs
 getCBRBArgs.SvmNucleusCaller = function(svmNucleusCaller) {
   if (contaminationColName %in% svmNucleusCaller$features) {
     stop("getCBRBArgs should only be used when useCBRBFeatures is false.")
@@ -209,7 +211,6 @@ getCBRBArgs.SvmNucleusCaller = function(svmNucleusCaller) {
   return(list(total_droplets_included=length(which(df$num_transcripts>threshold_total_droplets)), expected_cells=length(which(df$is_cell==T))))
 }
 
-#' @noRd
 #' @export
 getCBRBArgs.default = function(svmNucleusCaller) {
   stop("getCBRBArgs not implemented for this class")
