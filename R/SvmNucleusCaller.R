@@ -141,10 +141,7 @@ configureFeatureColumns = function(featureColumns, useCBRBFeatures, dgeMatrix) {
   return(featureColumns)
 }
 
-#' Send a standard set of plots (3 pages) to the current graphics device
-#'
 #' @inherit plotSvmNucleusCaller
-#' @return the input object
 #' @rdname plotSvmNucleusCaller
 #' @export
 plotSvmNucleusCaller.SvmNucleusCaller = function(svmNucleusCaller) {
@@ -204,6 +201,7 @@ getCBRBArgs = function(svmNucleusCaller) {
 
 #' @inherit getCBRBArgs
 #' @export
+#' @rdname getCBRBArgs
 getCBRBArgs.SvmNucleusCaller = function(svmNucleusCaller) {
   if (contaminationColName %in% svmNucleusCaller$features) {
     stop("getCBRBArgs should only be used when useCBRBFeatures is false.")

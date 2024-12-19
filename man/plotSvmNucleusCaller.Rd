@@ -14,11 +14,7 @@ plotSvmNucleusCaller(svmNucleusCaller)
 }
 \value{
 the input object, invisibly
-
-the input object
 }
 \description{
-Send a standard set of plots (3 pages) to the current graphics device
-
 Send a standard set of plots (3 pages) to the current graphics device
 }

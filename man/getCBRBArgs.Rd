@@ -2,9 +2,12 @@
 % Please edit documentation in R/SvmNucleusCaller.R
 \name{getCBRBArgs}
 \alias{getCBRBArgs}
+\alias{getCBRBArgs.SvmNucleusCaller}
 \title{Estimate CellBender remove-background arguments from an SvmNucleusCaller object}
 \usage{
 getCBRBArgs(svmNucleusCaller)
+
+\method{getCBRBArgs}{SvmNucleusCaller}(svmNucleusCaller)
 }
 \arguments{
 \item{svmNucleusCaller}{an object of class SvmNucleusCaller(useCBRBFeatures=FALSE)}
