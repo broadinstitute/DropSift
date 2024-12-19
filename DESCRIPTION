@@ -9,6 +9,7 @@ Maintainer: James Nemesh <nemesh@broadinstitute.org>
 Description: Distinguish nuclei/cells from empty droplets in a single nucleus/cell experiment.
 License: MIT + file LICENSE
 LazyData: TRUE
+LazyDataCompression: bzip2
 RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
@@ -18,3 +19,4 @@ Suggests:
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/testthat/edition: 3
+Depends: R (>= 3.5.0)

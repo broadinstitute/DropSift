@@ -112,7 +112,8 @@ validateCellFeatures<-function (cellFeatures, features) {
 DefaultFeatureColumns = c("num_transcripts", "pct_intronic", "pct_mt")
 defaultFeatureColumnsStringRep = paste0('c("', paste(DefaultFeatureColumns, collapse = '", "'), '")')
 
-#' @noRd
+#' S3 gorp that should not need to be documented but R CMD check complains if it is not.
+#' @param svmNucleusCaller an object of class SvmNucleusCaller
 #' @export
 plotSvmNucleusCaller = function(svmNucleusCaller) {
   UseMethod("plotSvmNucleusCaller", svmNucleusCaller)
@@ -141,7 +142,7 @@ configureFeatureColumns = function(featureColumns, useCBRBFeatures, dgeMatrix) {
 
 #' Send a standard set of plots (3 pages) to the current graphics device
 #'
-#' @param svmNucleusCaller an object of class SvmNucleusCaller
+#' @inheritParams plotSvmNucleusCaller
 #' @return the input object
 #' @rdname SvmNucleusCaller
 #' @export
@@ -167,9 +168,12 @@ plotSvmNucleusCaller.default = function(svmNucleusCaller) {
 }
 
 #' @rdname SvmNucleusCaller
-#' @param svmNucleusCaller an object of class SvmNucleusCaller
+#' @param x an object of class SvmNucleusCaller
+#' @param ... Other arguments that are ignored
+#' @method print SvmNucleusCaller
 #' @export
-print.SvmNucleusCaller = function(svmNucleusCaller,...) {
+print.SvmNucleusCaller = function(x,...) {
+  svmNucleusCaller = x
   if (is.null(svmNucleusCaller$cellProbabilityThreshold)) {
     cellProbabilityThreshold = "NULL"
   } else {
@@ -186,7 +190,8 @@ print.SvmNucleusCaller = function(svmNucleusCaller,...) {
   invisible(svmNucleusCaller)
 }
 
-#' @noRd
+#' S3 gorp that should not need to be documented but R CMD check complains if it is not.
+#' @param svmNucleusCaller an object of class SvmNucleusCaller(useCBRBFeatures=FALSE)
 #' @export
 getCBRBArgs = function(svmNucleusCaller) {
   UseMethod("getCBRBArgs", svmNucleusCaller)
@@ -197,7 +202,7 @@ getCBRBArgs = function(svmNucleusCaller) {
 #' After running the SVM with useCBRBFeatures=FALSE, get an estimate for --total-droplets-included and --expected-cells
 #' CellBender remove-background arguments.
 #'
-#' @param svmNucleusCaller an object of class SvmNucleusCaller(useCBRBFeatures=FALSE)
+#' @inheritParams getCBRBArgs
 #' @return a list with two elements: total_droplets_included and expected_cells
 #' @export
 getCBRBArgs.SvmNucleusCaller = function(svmNucleusCaller) {
@@ -209,7 +214,6 @@ getCBRBArgs.SvmNucleusCaller = function(svmNucleusCaller) {
   return(list(total_droplets_included=length(which(df$num_transcripts>threshold_total_droplets)), expected_cells=length(which(df$is_cell==T))))
 }
 
-#' @noRd
 #' @export
 getCBRBArgs.default = function(svmNucleusCaller) {
   stop("getCBRBArgs not implemented for this class")

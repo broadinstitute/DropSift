@@ -26,7 +26,7 @@ DefaultFeatureColumns
 
 \method{plotSvmNucleusCaller}{SvmNucleusCaller}(svmNucleusCaller)
 
-print.SvmNucleusCaller(svmNucleusCaller, ...)
+\method{print}{SvmNucleusCaller}(x, ...)
 }
 \arguments{
 \item{cellFeatures}{A data frame with columns: cell_barcode (unless dgeMatrix==NULL), num_reads, frac_contamination
@@ -57,6 +57,10 @@ When false, these features are not used.  This modifies the featureColumns argum
 \item{datasetName}{A string to identify the dataset in plots.}
 
 \item{svmNucleusCaller}{an object of class SvmNucleusCaller}
+
+\item{x}{an object of class SvmNucleusCaller}
+
+\item{...}{Other arguments that are ignored}
 }
 \value{
 An SvmNucleusCaller object

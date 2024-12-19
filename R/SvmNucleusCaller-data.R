@@ -23,7 +23,8 @@
 #' svmNucleusCallerInputs
 #'
 #' cell features and digital gene expression matrix for testing the SVM nucleus caller.
-#' Data from a snRNA-seq experiment 2023-08-25_v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1_dev_aug07_2024
+#' Data from a snRNA-seq experiment
+#' 2023-08-25_v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1_dev_aug07_2024
 #'
 #' @docType data
 #'
@@ -39,7 +40,8 @@
 #' @examples
 #' data(svmNucleusCallerInputs)
 #' svmNucleusCaller = DropSift::SvmNucleusCaller(svmNucleusCallerInputs$cellFeatures,
-#' svmNucleusCallerInputs$dgeMatrix, datasetName = "v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1",
+#' svmNucleusCallerInputs$dgeMatrix,
+#' datasetName = "v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1",
 #' useCBRBFeatures = FALSE)
 #'
 "svmNucleusCallerInputs"
