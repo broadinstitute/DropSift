@@ -1,0 +1,211 @@
+---
+title: "Nuclei Selection with DropSift"
+author: 
+ - "James Nemesh"
+ - "Alec Wysoker"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Nuclei Selection with DropSift}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+library(DropSift)
+```
+
+# Introduction
+
+Accurate nuclei selection is a critical step in single-cell RNA sequencing (scRNA-seq) analysis. Proper identification of nuclei ensures robust downstream expression quantification, cell type classification, and biological interpretation. However, distinguishing nuclei from empty droplets presents unique challenges, particularly in brain tissue, where high cellular diversity, ambient RNA contamination, and debris can complicate classification.
+Challenges of Nuclei Selection
+
+Nuclei differ from whole cells in several ways:
+
+-   They tend to have fewer captured UMIs, making it harder to distinguish them from background signal.
+-   The relative proportion of ambient RNA is higher, leading to potential contamination.
+-   The process of nuclei isolation from tissue can introduce debris, further complicating classification.
+    
+## EmptyDrops and Barcode Rank Plots
+A commonly used method for distinguishing cells from empty droplets is emptyDrops, which learns the expression model of empty droplets, then tests each droplet to see if it is consistent with the empty droplet model.  This model has been implemented in both the DropletUtils package and has been modified by 10x genomics.  
+
+EmptyDrops (and other methods) visualize the distribution of UMI counts as a [barcode rank plot](https://rdrr.io/github/MarioniLab/DropletUtils/man/barcodeRanks.html), to initialize the algorithm to initialize where a threshold where empty droplets should confidently be encountered.  In single-cell data, the transition between nuclei and empty droplets can be sharp, but nuclei's lower UMI counts and higher ambient RNA levels can obscure this transition. Barcode rank plots alone may not fully reveal the structure of the data, particularly the separation between nuclei, empty droplets, and debris.  This can lead to suboptimal initalization of empty and non-empty droplets, making classification difficult.
+
+<style>
+    img {
+        border: 0;
+    }
+</style>
+```{r, echo = FALSE, out.width="75%", fig.align="center"}
+knitr::include_graphics("./images/emptyDropsBarcodeRank.png")
+```
+
+## A More Informative Visualization Approach
+
+There are other features that can help clarify where the cell barcodes for these classes reside.  An important feature to consider is the fraction of reads that come from unspliced RNA.  Nuceli have a relatively higher proportion of their reads coming from unspliced RNA, and this can be used to help distinguish nuclei from empty droplets.  Instead of using a one-dimensional visualzation, we combine both UMI counts and the % intronic metric to uncover additional structure in a single nuclei experiment.  If we visualize the same data as above, the structure becomes more clear.
+
+<style>
+    img {
+        border: 0;
+    }
+</style>
+```{r, echo = FALSE, out.width="75%", fig.align="center"}
+knitr::include_graphics("./images/nucleiExperimentStructure.png")
+```
+
+This visualization contains 3 main classes:
+
+ - empty droplets are the highest center of density due to poisson loading of beads
+ - nuclei are the second highest center of density, and have a higher proportion of intronic reads
+ - debris are cell barcodes that have a much lower proportion of intronic reads, and tend to be smaller on average than nuclei.
+
+The barcode rank visualization obscures the structure of the data, especially the debris class.  Debris tends to occur mostly in the intermediate UMI range, which can make the cumulative distribution plot difficult to interpret.  
+
+While our lab has been visualizing data this way for quite some time, we're happy that other groups have also leveraged the same concept.  [DropletQC](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02547-0) is a software package that uses the same metrics to help identify empty droplets and damaged nuceli.  The visualization below is from the DropletQC manuscript. 
+
+<style>
+    img {
+        border: 0;
+    }
+</style>
+```{r, echo = FALSE, out.width="75%", fig.align="center"}
+knitr::include_graphics("./images/DropletQCExample.png")
+```
+
+## CellBender remove background
+
+Another method for distinguishing nuclei from empty droplets is [CellBender's remove-background](https://github.com/broadinstitute/CellBender).  This method does not explicitly select cells or nuclei, but instead (like emptyDrops) nominates non-empty cell barcodes.  This estimate is neccesary to accomplish remove-background's most important and useful task - to generate expression profiles for all non-empty droplets with the ambient RNA removed.  
+
+A [paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC9789184/) by Caglayan et al. visualized this ambient RNA.  The key takeaway is that the ambient RNA (which is the average of expression of the captured nuceli) is co-captured by all droplets, which can obscure the true expression of the cells.
+
+<style>
+    img {
+        border: 0;
+    }
+</style>
+```{r, echo = FALSE, out.width="75%", out.height="75%", fig.align="center"}
+knitr::include_graphics("./images/Neuronal_ambient_RNA_contamination.jpg")
+```
+
+Remove background visualizes its initialization somewhat similarly to EmptyDrops - the initialization algorithm is more complex and in practice seems more robust, but can suffer from the same initialization issues.  From their fine [documentation](https://cellbender.readthedocs.io/en/latest/usage/index.html#proposed-pipeline):
+
+>If you have a dataset with so much background RNA that you cannot identify the “empty droplet plateau” yourself by eye, then remove-background will also likely have a difficult time. Running the algorithm might be worth a try, but you should strongly consider re-running the experiment, as this points to a real QC failure.
+
+<style>
+    img {
+        border: 0;
+    }
+</style>
+```{r, echo = FALSE, out.width="75%", fig.align="center"}
+knitr::include_graphics("./images/CellBenderRankPlots.png")
+```
+
+In general initialization is robust for most data sets, and yields a super set of the cell barcodes that are likely to be nuclei. By comparing the number of UMIs each cell barcode has before and after cellbender, we can calculate the fraction of UMIs subtracted.  This is calculated as:
+
+\[
+\text{Fraction of UMIs Removed} = 1 - \frac{\text{CellBender Processed UMIs}}{\text{Raw UMI Counts}}
+\]
+
+The visualization below shows how UMI removal varies with total number of UMIs and % intronic content.
+
+<style>
+    img {
+        border: 0;
+    }
+</style>
+```{r, echo = FALSE, out.width="75%", fig.align="center"}
+knitr::include_graphics("./images/CellBender1.png")
+```
+
+## Introducing DropSift
+
+DropSift is a method designed to distinguish nuclei from empty droplets using a support vector machine (SVM) classifier. It incorporates:
+
+- Cell-level summary metrics, including UMI counts and % intronic.
+- Expression-based features, informed by differential expression between nuclei and empty droplets.
+- CellBender outputs (optional), which estimate ambient RNA contamination and further refine nuclei selection.
+
+By integrating these multiple signals, DropSift can more accurately classify nuclei while avoiding rigid thresholds or hard-coded assumptions about cell populations.
+
+# Running SvmNucleusCaller to distinguish nuclei from empties
+
+```{r, eval=FALSE}
+data(svmNucleusCallerInputs)
+set.seed(1)
+svmNucleusCaller = SvmNucleusCaller(
+        svmNucleusCallerInputs$cellFeatures,
+        svmNucleusCallerInputs$dgeMatrix,
+        datasetName = "v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1",
+        useCBRBFeatures = FALSE)
+selectedNuclei = svmNucleusCaller$cell_features[svmNucleusCaller$cell_features$is_cell,]$cell_barcode
+head(selectedNuclei)
+```
+
+# Plotting the results
+
+This function generates a multi-page report with plots of the SVM results.
+
+```         
+pdf("svmNucleusCallerReport.pdf")
+plotSvmNucleusCaller(svmNucleusCaller)
+dev.off()
+```
+
+<!-- Jim, the below is boilerplate when creating a dummy vignette.  I'm leaving it temporarily in case you find it useful. -->
+
+Vignettes are long form documentation commonly included in packages. Because they are part of the distribution of the package, they need to be as compact as possible. The `html_vignette` output type provides a custom style sheet (and tweaks some options) to ensure that the resulting html is as small as possible. The `html_vignette` format:
+
+-   Never uses retina figures
+-   Has a smaller default figure size
+-   Uses a custom CSS stylesheet instead of the default Twitter Bootstrap style
+
+## Vignette Info
+
+Note the various macros within the `vignette` section of the metadata block above. These are required in order to instruct R how to build the vignette. Note that you should change the `title` field and the `\VignetteIndexEntry` to match the title of your vignette.
+
+## Styles
+
+The `html_vignette` template includes a basic CSS theme. To override this theme you can specify your own CSS in the document metadata as follows:
+
+```         
+output: 
+  rmarkdown::html_vignette:
+    css: mystyles.css
+```
+
+## Figures
+
+The figure sizes have been customised so that you can easily put two images side-by-side.
+
+```{r, fig.show='hold'}
+plot(1:10)
+plot(10:1)
+```
+
+You can enable figure captions by `fig_caption: yes` in YAML:
+
+```         
+output:
+  rmarkdown::html_vignette:
+    fig_caption: yes
+```
+
+Then you can use the chunk option `fig.cap = "Your figure caption."` in **knitr**.
+
+## More Examples
+
+You can write math expressions, e.g. $Y = X\beta + \epsilon$, footnotes[^1], and tables, e.g. using `knitr::kable()`.
+
+[^1]: A footnote here.
+
+```{r, echo=FALSE, results='asis'}
+knitr::kable(head(mtcars, 10))
+```
+
+Also a quote using `>`:
+
+> "He who gives up [code] safety for [code] speed deserves neither." ([via](https://twitter.com/hadleywickham/status/504368538874703872))
