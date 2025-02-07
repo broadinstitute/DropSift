@@ -101,7 +101,7 @@ A [paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC9789184/) by Caglayan et al. 
         border: 0;
     }
 </style>
-```{r, echo = FALSE, out.width="75%", out.height="75%", fig.align="center"}
+```{r, echo = FALSE, out.width="50%", out.height="50%", fig.align="center"}
 knitr::include_graphics("./images/Neuronal_ambient_RNA_contamination.jpg")
 ```
 
@@ -114,7 +114,7 @@ Remove background visualizes its initialization somewhat similarly to EmptyDrops
         border: 0;
     }
 </style>
-```{r, echo = FALSE, out.width="75%", fig.align="center"}
+```{r, echo = FALSE, out.width="100%", out.height="100%", fig.align="center"}
 knitr::include_graphics("./images/CellBenderRankPlots.png")
 ```
 
@@ -291,9 +291,9 @@ To ensure features contribute effectively to classification:
 With these processed features, the next step is training the support vector machine (SVM) to classify nuclei.
 
 ### Empty Gene Module Score: Capturing Ambient RNA Signatures
-Many of the features used for classification—such as transcript abundance and intronic content—capture broad distinctions between nuclei and empty droplets. But expression profiles also carry important information that can help refine these classifications. Inspired by emptyDrops, we take a simpler but effective approach: instead of modeling the full expression profile of each barcode, we construct a single feature that summarizes the genes most enriched in empty droplets.
+Many of the features used for classification—such as transcript abundance and intronic content—capture broad distinctions between nuclei and empty droplets. But expression profiles also carry important information that can help refine these classifications. Inspired by emptyDrops, we take a simpler but effective approach: we construct a single feature that summarizes the genes most enriched in empty droplets.
 
-To do this, we first need a way to compare the expression profiles of nuclei and empty droplets. The challenge is that empty droplets contain very few UMIs, making direct differential expression analysis difficult. To compensate, we create pseudobulked empty droplets by summing the expression of multiple low-UMI barcodes until each pooled sample has a library size comparable to a randomly selected exemplar nucleus. This allows for a meaningful comparison between the two groups.
+To do this, we first need a way to compare the expression profiles of nuclei and empty droplets. The challenge is that empty droplets contain very few UMIs, making direct differential expression analysis difficult. To compensate, we create pseudobulked empty droplets by summing the expression of multiple low-UMI barcodes until each pooled sample has a library size comparable to a randomly selected exemplar nucleus. This allows for a meaningful comparison between the two groups that avoids normalization issues where a single observation of a gene in an empty droplet with few transcripts can appear to be highly expressed.
 
 Next, we perform differential expression analysis between these pseudobulked empty droplets and exemplar nuclei, using a Wilcoxon rank-sum test via [Seurat's FindMarkers](https://satijalab.org/seurat/reference/findmarkers) to identify genes that are strongly enriched in empty droplets. We rank genes by log2 fold change and take the top 100, which provides a robust set of genes that consistently differentiate empty droplets from nuclei.
 
@@ -306,14 +306,48 @@ The plots below illustrate how the empty gene module score separates nuclei from
         border: 0;
     }
 </style>
-```{r, echo = FALSE, out.width="75%", fig.align="center"}
-knitr::include_graphics("./images/EmptyGeneModuleScore.png")
+```{r, echo = FALSE, out.width="100%", fig.align="center"}
+knitr::include_graphics("./images/EmptyGeneModuleScore1.png")
+```
+<style>
+    img {
+        border: 0;
+    }
+</style>
+```{r, echo = FALSE, out.width="50%", out.height="50%", fig.align="center"}
+knitr::include_graphics("./images/EmptyGeneModuleScore2.png")
 ```
 
 
 ## SVM
+With a well-defined set of exemplars and extracted features, we can now train a support vector machine (SVM) classifier to distinguish nuclei from empty droplets. We use the e1071 R package to implement the SVM, leveraging its ability to learn complex decision boundaries.
+
+Unlike simple thresholding, which applies fixed cutoffs, the SVM learns from the data itself, identifying an optimal boundary that separates nuclei from empty droplets based on multiple features. This allows it to handle nonlinear patterns that arise from differences in ambient RNA contamination, sequencing depth, and dataset-specific structure.
+
+The SVM is trained using the selected exemplars:
+
+- Empty droplets (red) serve as negative training examples.
+- Nuclei (green) serve as positive training examples.
+
+We use a radial basis function (RBF) kernel, which is well-suited for capturing nonlinear relationships in the data. The RBF kernel allows the SVM to learn flexible decision boundaries that can adapt to dataset-specific variation without overfitting.  
+
+<style>
+    img {
+        border: 0;
+    }
+</style>
+```{r, echo = FALSE, out.width="75%", fig.align="center"}
+knitr::include_graphics("./images/SVM_DecisionBoundary.png")
+```
+
+After training, each barcode is assigned a classification score based on its position relative to the decision boundary. This score reflects how confidently the barcode is predicted to be a nucleus.
 
 ## Classifying Remaining Barcodes
+With the SVM model trained, we can now classify all remaining barcodes. Each barcode is assigned a probability of being a nucleus, and classification follows a straightforward rule: if the predicted probability is ≥ 0.5, the barcode is classified as a nucleus; otherwise, it is labeled as an empty droplet.
+
+One additional consideration is low-UMI barcodes—those with UMI counts smaller than the exemplar ambient RNA cell barcodes. These barcodes often contain too few transcripts for meaningful classification, yet they are clearly not nuclei. Rather than forcing a prediction, these barcodes are excluded from classification altogether, ensuring that only barcodes with sufficient transcript content are evaluated by the model.
+
+This final classification step completes the nuclei selection process, producing a set of confidently identified nuclei while avoiding misclassification of barcodes that lack enough data for reliable labeling.
 
 # Running DropSift to distinguish nuclei from empties
 
