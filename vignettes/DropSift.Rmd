@@ -15,12 +15,19 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
+library(knitr)
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = ""
 )
-library(knitr)
+
+library(logger)
 library(DropSift)
+
+logger::log_threshold(level=logger::INFO)   # Ensure INFO logs are captured
+logger::log_appender(logger::appender_stdout)                # Redirect logs to R Markdown output
+#log_layout(layout_glue("{level}: {msg}"))    # Fix error by passing a format string
+
 ```
 
 # Introduction
@@ -518,6 +525,8 @@ The output contains two columns with no header.  The first column has the count 
 ## Running DropSift to distinguish nuclei from empties
 The test data set includes all of the optional cell level features, but we can run DropSift without them.  We'll let DropSift infer the number of transcripts from the DGE and omit the number of reads.  Additionally, we'll skip including the cellbender remove-background metric.  
 
+This data set comes from a real single cell nuclei experiment, but has been downsampled to 10% of the cell barcodes present in the original experiment.
+
 ```{r, eval=TRUE, include=TRUE}
 dropColumns <- c("num_transcripts", "num_reads", "frac_contamination")
 cell_features <- svmNucleusCallerInputs$
@@ -527,7 +536,7 @@ cell_features <- svmNucleusCallerInputs$
 
 <style>
 table {
-  font-size: 10px;
+  font-size: 12px;
 }
 </style>
 
@@ -541,14 +550,18 @@ kable(df, format = "html")
 ```
 
 
-```{r, eval=TRUE, include=TRUE, cache=FALSE}
+```{r, eval=TRUE, include=TRUE, cache=FALSE, message=TRUE, warning=TRUE}
 set.seed(1)
 svmNucleusCaller = SvmNucleusCaller(
         cell_features,
         svmNucleusCallerInputs$dgeMatrix,
         datasetName = "Test (without remove-background)",
         useCBRBFeatures = FALSE)
+
+
 ```
+<br />
+The function emits a series of logging outputs to help you see that you've properly configured your input as well as track the algorithm's process.  In this small test data set, the algorithm runs quickly.  You should expect total run times on the order of 10-15 minutes for a full sized experiment.
 
 # Results
 
@@ -653,7 +666,7 @@ This plot shows the gene module score for all cell barcodes in the data set.  As
 
 # Running DropSift from the command line
 
-If the data is in the correct format, nuclei selection can be run with a single API call DropSift::runIntronicSVM that reads in the input files and emits a dataframe of cell barcode data with labels, and a PDF containing quality control plots. For example, to process Optimus Pipeline outputs, you could run the following (assuming you have installed this package and it's on your R_LIBS path):
+If the data is in the correct format, nuclei selection can be run with a single API call `DropSift::runIntronicSVM` that reads in the input files and emits a dataframe of cell barcode data with labels, and a PDF containing quality control plots. For example, to process Optimus Pipeline outputs, you could run the following (assuming you have installed this package and it's on your R_LIBS path):
 
 ```         
 Rscript -e 'DropSift::runIntronicSVM(datasetName="test", optimusH5File="/path/to/my.h5ad", outPDF="/path/to/output.pdf", outFeaturesFile="/path/to/output_report.txt")'
