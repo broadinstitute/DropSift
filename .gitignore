@@ -2,3 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/vcs.xml
+/DropSift.iml

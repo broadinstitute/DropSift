@@ -6,11 +6,12 @@
 #' Validates and reorders DGE matrix to match the cell_features order.
 #'
 #' @param dgeMatrixFile The file to parse.  If a directory, then the expected 10x MTX files are read.
-#' @param cell_features A cell features data frame with the cell barcodes to match the DGE matrix
+#' @param cell_features A cell features data frame with the cell barcodes to match the DGE matrix.  If supplied,
+#' the DGE matrix will be reordered and filtered to match the cell_features barcodes.
 #'
-#' @return A matrix of the DGE matrix with the cell barcodes in the same order as the cell_features
-#' @noRd
-readDgeFile<-function (dgeMatrixFile, cell_features) {
+#' @return A matrix of the DGE matrix with (optionally) the cell barcodes in the same order as the cell_features
+#' @export
+readDgeFile<-function (dgeMatrixFile, cell_features=NULL) {
     dgeMatrix=NULL
     if (!is.null(dgeMatrixFile)) {
         dgeMatrix=readDgeMatrixOptionallySparse(dgeMatrixFile)
@@ -19,10 +20,13 @@ readDgeFile<-function (dgeMatrixFile, cell_features) {
             stop("The cell barcodes in the DGE matrix do not match the cell barcodes in the cell features file.")
         }
         #reorder the dgeMatrix to match the cell_features order
-        dgeMatrix=dgeMatrix[,match(cell_features$cell_barcode, colnames(dgeMatrix))]
-        if (any(cell_features$cell_barcode!=colnames(dgeMatrix))) {
-            stop ("Cell barcodes in the DGE matrix do not match the cell barcodes in the cell features file.")
+        if (!is.null(cell_features)) {
+            dgeMatrix=dgeMatrix[,match(cell_features$cell_barcode, colnames(dgeMatrix))]
+            if (any(cell_features$cell_barcode!=colnames(dgeMatrix))) {
+                stop ("Cell barcodes in the DGE matrix do not match the cell barcodes in the cell features file.")
+            }
         }
+
     }
     return (dgeMatrix)
 }
@@ -194,7 +198,7 @@ read_dge_gz<-function(file, decreasing_order_by_size=TRUE) {
 readCellFeatures<-function(cellFeaturesFile, requiredColumns=NULL, verbose=TRUE) {
     cell_features <- utils::read.table(cellFeaturesFile, stringsAsFactors = FALSE, header=TRUE )
 
-    if (verbose)
+    if (verbose. && "num_transcripts" %in% colnames(cell_features))
         message( nrow(cell_features), " rows in file (", min(cell_features$num_transcripts), "+ UMIs)")
     return(cell_features)
 }

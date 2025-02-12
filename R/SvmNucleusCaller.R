@@ -32,7 +32,8 @@ new_SvmNucleusCaller <- function(results, cellProbabilityThreshold, maxUmisEmpty
 }
 
 emptyGeneModuleScoreColName = "empty_gene_module_score"
-requiredNonSvmColNames = c("cell_barcode", "num_reads")
+#requiredNonSvmColNames = c("cell_barcode", "num_reads")
+requiredNonSvmColNames = c("cell_barcode")
 cbrbNonSvmColNames = c("num_retained_transcripts")
 contaminationColName = "frac_contamination"
 
@@ -73,6 +74,9 @@ SvmNucleusCaller <- function(cellFeatures, dgeMatrix, cellProbabilityThreshold=N
   stopifnot(is.logical(forceTwoClusterSolution))
   stopifnot(is.character(datasetName))
   stopifnot(is.logical(useCBRBFeatures))
+
+  #optionally enhance the cell features data frame with additional columns if they are missing and can be computed.
+  cellFeatures=enhanceCelLFeatures (cellFeatures, dgeMatrix, useCBRBFeatures)
   featureColumns = configureFeatureColumns(featureColumns, useCBRBFeatures, dgeMatrix)
   stopifnot(is.character(featureColumns))
   validateCellFeatures(cellFeatures, featureColumns)
@@ -88,9 +92,26 @@ SvmNucleusCaller <- function(cellFeatures, dgeMatrix, cellProbabilityThreshold=N
                               features=featureColumns,
                               forceTwoClusterSolution = forceTwoClusterSolution)
   results$cell_features = data.frame(cell_barcode=rownames(results$cell_features), results$cell_features)
-  # TODO: Mostly the input parameters are saved, but should dgeMatrix be saved?
   return(new_SvmNucleusCaller(results, cellProbabilityThreshold, maxUmisEmpty,
                           forceTwoClusterSolution))
+}
+
+#' Optionally add extra cell features to the cell_features data frame if they are missing
+#' and can be computed from the input data.
+#' @noRd
+enhanceCelLFeatures<-function (cellFeatures, dgeMatrix, useCBRBFeatures) {
+    #optionally add the num_transcripts column to the cell_features data frame if missing.
+    if (!"num_transcripts" %in% colnames(cellFeatures)) {
+        log_info("num_transcripts column not found in cell_features.  Computing from DGE matrix.")
+        cellFeatures$num_transcripts=colSums(dgeMatrix)
+    }
+
+    #optionally approximate the num_retained_transcripts if missing
+    if (!"num_retained_transcripts" %in% colnames(cellFeatures) && useCBRBFeatures) {
+        log_info("frac_contamination found but num_retained_transcripts column not found in cell_features.  Approximating from num_transcripts and frac_contamination.")
+        cellFeatures$num_retained_transcripts=round(1-(cellFeatures$frac_contamination)*cellFeatures$num_transcripts)
+    }
+    return (cellFeatures)
 }
 
 validateCellFeatures<-function (cellFeatures, features) {
@@ -104,7 +125,6 @@ validateCellFeatures<-function (cellFeatures, features) {
     }
   }
 }
-
 
 DefaultFeatureColumns = c("num_transcripts", "pct_intronic", "pct_mt")
 defaultFeatureColumnsStringRep = paste0('c("', paste(DefaultFeatureColumns, collapse = '", "'), '")')

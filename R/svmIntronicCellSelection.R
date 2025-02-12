@@ -61,8 +61,6 @@ runIntronicSVM<-function (datasetName, cellFeaturesFile=NULL, dgeMatrixFile=NULL
       useCBRBFeatures = useCBRBFeatures,
         datasetName = datasetName
     )
-    # TODO: where should this be called?
-    # validateCellFeatures(cell_features, features)
 
     cell_features_result=svmNucleusCaller$cell_features
 
@@ -71,7 +69,7 @@ runIntronicSVM<-function (datasetName, cellFeaturesFile=NULL, dgeMatrixFile=NULL
         #pdf(outPDF, width = pdf_width, height = pdf_height)
         grDevices::pdf(outPDF)
     }
-    plotSvmNucleusCaller(svmNucleusCaller)
+
     if (!is.null(outPDF)) {
         grDevices::dev.off()
     }
@@ -91,7 +89,6 @@ runIntronicSVM<-function (datasetName, cellFeaturesFile=NULL, dgeMatrixFile=NULL
 
 
 
-
 #' Select cells using an SVM trained on cell summary features
 #'
 #' @param dataset_name The name of the dataset.  Used for plotting.  Useful to use a unique experimental identifier (UEI) if available.
@@ -103,7 +100,7 @@ runIntronicSVM<-function (datasetName, cellFeaturesFile=NULL, dgeMatrixFile=NULL
 #' @noRd
 callByIntronicSVM<-function (dataset_name, cell_features, dgeMatrix,
                              cellProbabilityThreshold=NULL, max_umis_empty=50,
-                             features,
+                             features=NULL,
                              forceTwoClusterSolution=FALSE) {
 
     #validate the features are in the cell_features data frame.
@@ -188,8 +185,9 @@ callByIntronicSVM<-function (dataset_name, cell_features, dgeMatrix,
 
     feature_plot=plotScaledTrainingDataFeatures(trainingData[,c(features, "training_label_is_cell")])
     log_info("Nuclei selection finished")
+    plot_list=list(cellbender=p1, initialization=p2, selected_nuceli=p3,nuceli_probability=p4,selected_nuclei_density=p5,selected_nuclei_density_rb=p6)
     return (list(dataset_name=dataset_name, cell_features=cell_features_result, features=features,
-                 plots=list(p1, p2,p3,p4,p5,p6), featurePlot=feature_plot,
+                 plots=plot_list, featurePlot=feature_plot,
                  geneModulePlots=geneModulePlots, bounds_empty=bounds_empty, bounds_non_empty=bounds_non_empty))
 }
 
@@ -218,8 +216,6 @@ parseInputs<-function (cellFeaturesFile=NULL, dgeMatrixFile=NULL, optimusH5File=
     result=list(cell_features=cell_features, dgeMatrix=dgeMatrix)
     return (result)
 }
-
-
 
 ###############################################
 # FIND EXEMPLAR CLASS BOUNDS
@@ -912,13 +908,13 @@ runSVM<-function (cell_features_labeled, features, bounds_empty, cellProbability
     probabilities <- attr(predictions, "probabilities")
 
     # Calculate confidence scores
-    confidence_scores <- apply(probabilities, 1, function(x) max(x) / sum(x))
+    # confidence_scores <- apply(probabilities, 1, function(x) max(x) / sum(x))
 
     # Combine predictions and confidence into a dataframe
     results_df <- data.frame(
         is_cell = predictions,
-        is_cell_prob= probabilities[,"TRUE"],
-        confidence = confidence_scores
+        is_cell_prob= probabilities[,"TRUE"]
+        #confidence = confidence_scores
     )
 
     #optionally override cell probability
@@ -931,7 +927,7 @@ runSVM<-function (cell_features_labeled, features, bounds_empty, cellProbability
     # but we know they are not true nuclei.
     idx=which(log10(cell_features_labeled$num_transcripts)<bounds_empty$umi_upper_bound)
     results_df$is_cell_prob[idx]=NA
-    results_df$confidence[idx]=NA
+    #results_df$confidence[idx]=NA
     results_df$is_cell[idx]=FALSE
 
     # merge the results_df with the original cell_features
@@ -945,7 +941,11 @@ scaleFeatures<-function (cell_features_labeled, features) {
     cell_features_scaled=data.frame(cell_features_labeled)
     #log 10 the larger features
     cell_features_scaled$num_transcripts=log10(cell_features_scaled$num_transcripts)
-    cell_features_scaled$num_reads=log10(cell_features_scaled$num_reads)
+
+    #This feature isn't used by default but is scaled in case someone wants to experiment.
+    if ("num_reads" %in% cell_features_scaled)
+        cell_features_scaled$num_reads=log10(cell_features_scaled$num_reads)
+
     #scale the features prior to SVN
     cell_features_scaled[,features]=scale(cell_features_scaled[,features])
 
@@ -1380,14 +1380,25 @@ getCellSelectionPlotTitle<-function (cell_features_result, strTitlePrefix="", tr
     selected=cell_features_result[which(cell_features_result$is_cell==T),]
 
     numSTAMPs=dim(selected)[1]
-    readsPerUMI=mean(selected$num_reads/selected[[transcriptFeature]])
+    readsPerUMI=NA
+
     minNumUmis=min(selected[[transcriptFeature]])
     medianUMI=round (median(selected[[transcriptFeature]]))
     minIntronic=min(selected$pct_intronic)
     comma_formatter <- scales::label_comma()
 
-   strTitle=sprintf("%s, intronic>=%.2f\n%s Nuclei, %.1f reads/UMI, %d+ UMIs, medUMIs %s",
-                    strTitlePrefix, minIntronic, comma_formatter(numSTAMPs), readsPerUMI, minNumUmis, comma_formatter(medianUMI))
+    strTitle=sprintf("%s, intronic>=%.2f\n%s Nuclei, %d+ UMIs, medUMIs %s",
+                     strTitlePrefix, minIntronic, comma_formatter(numSTAMPs), minNumUmis, comma_formatter(medianUMI))
+
+    #if the number of reads is available, add the average reads/UMI to the title.
+    if ("num_reads" %in% colnames(selected)) {
+        readsPerUMI=mean(selected$num_reads/selected[[transcriptFeature]])
+        strTitle=sprintf("%s, intronic>=%.2f\n%s Nuclei, %.1f reads/UMI, %d+ UMIs, medUMIs %s",
+                         strTitlePrefix, minIntronic, comma_formatter(numSTAMPs), readsPerUMI, minNumUmis, comma_formatter(medianUMI))
+    } else {
+
+    }
+
     return (strTitle)
 
 }
@@ -1484,7 +1495,7 @@ plotCellTypeIntervals<-function (cell_features, bounds_empty, bounds_non_empty, 
 
 plotSelectedCells<-function (cell_features_result, size = 0.25, alpha=0.25) {
 
-    strTitle="Selected Cells"
+    strTitle="Selected Nuclei"
 
     umi_min_threshold=min (log10(cell_features_result[cell_features_result$is_cell==T,][["num_transcripts"]]))
     intronic_min_threshold=min (cell_features_result[cell_features_result$is_cell==T,]$pct_intronic)
@@ -1497,7 +1508,7 @@ plotSelectedCells<-function (cell_features_result, size = 0.25, alpha=0.25) {
         labs(
             x = "log10(UMI)",
             y = "% Intronic",
-            color = "Selected Cell"
+            color = "Selected Nuclei"
         ) +
         ggtitle(strTitle) +
         scale_color_manual(values = c("TRUE" = "green", "FALSE" = "lightblue")) +
@@ -1628,7 +1639,7 @@ plotScaledTrainingDataFeatures<-function(trainingData) {
 #     return(p)
 # }
 
-plotCellProbabilities<-function (cell_features, strTitle="Cell Probability") {
+plotCellProbabilities<-function (cell_features, strTitle="Nuclei Probability") {
 
     df=cell_features[which(cell_features$is_cell_prob>=0.5),]
 
@@ -1648,7 +1659,7 @@ plotCellProbabilities<-function (cell_features, strTitle="Cell Probability") {
         labs(
             x = "log10(UMI)",
             y = "% Intronic",
-            color = "Cell Probability"
+            color = "Nuclei Probability"
         ) +
         #coord_cartesian(xlim = log10_UMI_AXIS_RANGE_NEW) +
         ggtitle(strTitle) +
