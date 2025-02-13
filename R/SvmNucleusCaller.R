@@ -109,7 +109,7 @@ enhanceCelLFeatures<-function (cellFeatures, dgeMatrix, useCBRBFeatures) {
     #optionally approximate the num_retained_transcripts if missing
     if (!"num_retained_transcripts" %in% colnames(cellFeatures) && useCBRBFeatures) {
         log_info("frac_contamination found but num_retained_transcripts column not found in cell_features.  Approximating from num_transcripts and frac_contamination.")
-        cellFeatures$num_retained_transcripts=round(1-(cellFeatures$frac_contamination)*cellFeatures$num_transcripts)
+        cellFeatures$num_retained_transcripts=round((1-(cellFeatures$frac_contamination))*cellFeatures$num_transcripts)
     }
     return (cellFeatures)
 }

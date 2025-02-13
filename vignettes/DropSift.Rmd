@@ -30,15 +30,107 @@ logger::log_appender(logger::appender_stdout)                # Redirect logs to 
 
 ```
 
+# Quickstart
+To perform nucleus selection, DropSift requires two main inputs: a cell-level feature matrix and a digital gene expression (DGE) matrix. This section provides a minimal example using user-supplied data in standard formats.
+
+## Input Data
+
+The cell level feature matrix contains the cell barcode ID and per-cell summary statistics (column name in parenthesis)
+    
+    Cell Barcode ID (cell_barcode)
+    Intronic fraction (pct_intronic)
+    Mitochondrial content (pct_mt)
+
+```{r, eval=TRUE, include=FALSE}
+data(svmNucleusCallerInputs)
+dropColumns <- c("num_transcripts", "num_reads", "frac_contamination")
+cell_features <- svmNucleusCallerInputs$
+    cellFeatures[, setdiff(colnames(svmNucleusCallerInputs$cellFeatures), dropColumns)]
+```
+    
+<style>
+table {
+  font-size: 12px;
+}
+</style>
+
+```{r, echo=FALSE}
+# Display first few rows of the data frame
+df <- head(cell_features)
+rownames(df)=NULL
+
+# Create a simple table
+kable(df, format = "html")
+```
+
+The DGE matrix contains raw UMI counts for each gene (rows) across cell barcodes (columns). It should be supplied as either:
+
+- A dense matrix (tab delimited text)
+- A sparse matrix in 10x Genomics MTX format (matrix.mtx.gz with barcodes.tsv.gz and features.tsv.gz)
+
+```{r, eval=TRUE, echo=FALSE}
+dgeMatrix=svmNucleusCallerInputs$dgeMatrix
+print (dgeMatrix[1:5,1:3])
+```
+
+## DropSift
+To run DropSift, create an `SvmNucleusCaller` object with the cell features and DGE matrix. The `datasetName` parameter is optional and can be used to label the output plots.
+
+```{r, eval=TRUE, include=TRUE, cache=FALSE, message=TRUE, warning=TRUE}
+library(DropSift)
+set.seed(1)
+svmNucleusCaller = SvmNucleusCaller(
+        cell_features,
+        dgeMatrix,
+        datasetName = "Test",
+        useCBRBFeatures = FALSE)
+
+
+```
+
+Cell Barcodes selected as nuclei can be accessed from the `cell_features` data frame.
+
+```{r, eval=TRUE, include=TRUE}
+cf=svmNucleusCaller$cell_features
+nuclei = cf[cf$is_cell==T,]
+```
+
+
+```{r, echo=FALSE}
+# Display first few rows of the data frame
+df <- head(nuclei)
+rownames(df)=NULL
+
+# Create a simple table
+kable(df, format = "html")
+```
+
+
+Alternatively, the Optimus Pipeline h5ad file format can be parsed to yield a cell metrics dataframe and a sparse DGE matrix.
+```{r, eval=FALSE, include=TRUE, cache=FALSE, message=TRUE, warning=TRUE}
+library(DropSift)
+
+inputs=parseOptimusH5ad(h5ad_file = "path/to/h5ad_file.h5ad")
+
+set.seed(1)
+svmNucleusCaller = SvmNucleusCaller(
+        inputs$cell_features,
+        inputs$dge,
+        datasetName = "Test (without remove-background)",
+        useCBRBFeatures = FALSE)
+```
+
+See the [Running DropSift](#running-dropsift) section for more details on how to run DropSift with your own data.
+
 # Introduction
 
-Accurate nuclei selection is a critical step in single-cell RNA sequencing (scRNA-seq) analysis. Proper identification of nuclei ensures robust downstream expression quantification, cell type classification, and biological interpretation. However, distinguishing nuclei from empty droplets presents unique challenges, particularly in brain tissue, where high cellular diversity, ambient RNA contamination, and debris can complicate classification. Challenges of Nuclei Selection
+Accurate nucleus selection is a critical step in single-cell RNA sequencing (scRNA-seq) analysis. Proper identification of nuclei ensures robust downstream expression quantification, cell type classification, and biological interpretation. However, distinguishing nuclei from empty droplets presents unique challenges, particularly in brain tissue, where high cellular diversity, ambient RNA contamination, and debris can complicate classification. Challenges of Nuclei Selection
 
 Nuclei differ from whole cells in several ways:
 
 -   They tend to have fewer captured UMIs, making it harder to distinguish them from background signal.
 -   The relative proportion of ambient RNA is higher, leading to potential contamination.
--   The process of nuclei isolation from tissue can introduce debris, further complicating classification.
+-   The process of nucleus isolation from tissue can introduce debris, further complicating classification.
 
 ## EmptyDrops and Barcode Rank Plots
 
@@ -60,7 +152,7 @@ knitr::include_graphics("./images/emptyDropsBarcodeRank.png")
 
 ## A More Informative Visualization Approach
 
-There are other features that can help clarify where the cell barcodes for these classes reside. An important feature to consider is the fraction of reads that come from unspliced RNA. Nuceli have a relatively higher proportion of their reads coming from unspliced RNA, and this can be used to help distinguish nuclei from empty droplets. Instead of using a one-dimensional visualzation, we combine both UMI counts and the % intronic metric to uncover additional structure in a single nuclei experiment. If we visualize the same data as above, the structure becomes more clear.
+There are other features that can help clarify where the cell barcodes for these classes reside. An important feature to consider is the fraction of reads that come from unspliced RNA. Nuceli have a relatively higher proportion of their reads coming from unspliced RNA, and this can be used to help distinguish nuclei from empty droplets. Instead of using a one-dimensional visualzation, we combine both UMI counts and the % intronic metric to uncover additional structure in a single nucleus experiment. If we visualize the same data as above, the structure becomes more clear.
 
 ```{=html}
 <style>
@@ -182,7 +274,7 @@ DropSift is a method designed to distinguish nuclei from empty droplets using a 
 
 -   Cell-level summary metrics, including UMI counts and % intronic.
 -   Expression-based features, informed by differential expression between nuclei and empty droplets.
--   CellBender outputs (optional), which estimate ambient RNA contamination and further refine nuclei selection.
+-   CellBender outputs (optional), which estimate ambient RNA contamination and further refine nucleus selection.
 
 By integrating multiple signals, DropSift effectively differentiates nuclei from empty droplets while adapting to the variability in data structure—such as ambient RNA contamination—across different experiments and species. Rather than relying on tissue or organism-specific features, it learns expression patterns unique to each dataset to improve classification accuracy.
 
@@ -560,18 +652,18 @@ svmNucleusCaller = SvmNucleusCaller(
 
 
 ```
-<br />
-The function emits a series of logging outputs to help you see that you've properly configured your input as well as track the algorithm's process.  In this small test data set, the algorithm runs quickly.  You should expect total run times on the order of 10-15 minutes for a full sized experiment.
 
+The function emits a series of logging outputs to help you see that you've properly configured your input as well as track the algorithm's process.  In this small test data set, the algorithm runs quickly.  You should expect total run times on the order of 10-15 minutes for a full sized experiment.
+<br />
 # Results
 
 The svmNucleusCaller object returns a number of elements.
 ```{r, eval=TRUE, include=TRUE, tidy=FALSE}
 names (svmNucleusCaller)
 ```
-The first critical element is the `cell_features` dataframe, which contains the original cell-level features, which cell barcodes were used to train the model, the classification score, and the classification label. The classification score is the probability that the cell barcode is a nucleus, and the classification label is the final classification based on the score.  By default, any cell barcode with a classification score >= 0.5 is considerd a nuclei.  
+The first critical element is the `cell_features` dataframe, which contains the original cell-level features, which cell barcodes were used to train the model, the classification score, and the classification label. The classification score is the probability that the cell barcode is a nucleus, and the classification label is the final classification based on the score.  By default, any cell barcode with a classification score >= 0.5 is considered a nucleus.  
 
-The column `training_label_is_cell` is TRUE if the cell barcode was used to train the nuclei class, FALSE if used to train the empty class, and NA if not used in training.
+The column `training_label_is_cell` is TRUE if the cell barcode was used to train the nucleus class, FALSE if used to train the empty class, and NA if not used in training.
 
 Let's look at the first few cell barcodes that were not in the training set, but were classified as nuclei.  
 
@@ -652,7 +744,7 @@ There are 2 plots that show the distribution of the empty gene module score in t
 names (svmNucleusCaller$geneModulePlots)
 ```
 
-### Initialization
+### Exemplars
 ```{r, eval=TRUE, include=TRUE, fig.align="center", fig.width=7, fig.height=5}
 print (svmNucleusCaller$geneModulePlots$training_data)
 ```
@@ -663,6 +755,33 @@ This plot shows the distribution of the empty gene module score in the nuclei an
 print (svmNucleusCaller$geneModulePlots$empty_gene_module_score)
 ```
 This plot shows the gene module score for all cell barcodes in the data set.  As expected, cell barcodes with higher UMIs and higher %intronic content tend to have lower scores.  In experiments with high ambient RNA contamination, some data sets will have less clear decision boundaries and may have a gradient of of scores between the empty droplets and nuclei.
+
+# Running DropSift with CellBender Remove Background
+This second covers a few additional QC plots that are generated when CellBender Remove Background metrics are included in the cell_features.  
+
+```{r, eval=TRUE, include=TRUE, cache=FALSE, message=TRUE, warning=TRUE}
+data(svmNucleusCallerInputs)
+
+svmNucleusCaller = SvmNucleusCaller(
+        svmNucleusCallerInputs$cellFeatures,
+        svmNucleusCallerInputs$dgeMatrix,
+        datasetName = "Test (without remove-background)",
+        useCBRBFeatures = TRUE)
+
+
+```
+
+The cellbender frac_contamination is now available, and shows the gradient in UMIs that are removed by CellBender as a function of UMI count.  
+
+```{r, eval=TRUE, include=TRUE, fig.align="center", fig.width=7, fig.height=5}
+print (svmNucleusCaller$plots$cellbender)
+```
+
+The nucleus selection plot with the fraction of UMIs remaining after cellbender remove background:
+```{r, eval=TRUE, include=TRUE, fig.align="center", fig.width=7, fig.height=5}
+print (svmNucleusCaller$plots$selected_nuclei_density_rb)
+```
+
 
 # Running DropSift from the command line
 

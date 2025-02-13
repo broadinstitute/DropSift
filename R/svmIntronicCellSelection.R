@@ -1553,6 +1553,9 @@ plotSelectedCellsSmoothScatter <- function(cell_features, strTitlePrefix = "",
     }
 
     cell_features_filtered <- cell_features[!is.na(cell_features$is_cell), ]
+    #for cases where plotting remove background processed data.
+    #number of transcripts should never be 0.
+    cell_features_filtered <- cell_features_filtered[cell_features_filtered[[transcriptFeature]]>0,]
 
     strTitle <- getCellSelectionPlotTitle(cell_features_filtered,
                                           strTitlePrefix = strTitlePrefix,
