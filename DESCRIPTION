@@ -4,6 +4,7 @@ Title: Distinguish nuclei/cells from empty droplets
 Version: 1.0
 Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,presto,e1071,logger,Seurat,data.table,cluster,methods,scales,rhdf5,gridGraphics
 Remotes: github::mojaveazure/seurat-disk, github::immunogenomics/presto
+Remotes: bioc::rhdf5
 Author: James Nemesh
 Maintainer: James Nemesh <nemesh@broadinstitute.org>
 Description: Distinguish nuclei/cells from empty droplets in a single nucleus/cell experiment.
