@@ -229,8 +229,10 @@ getCBRBArgs.SvmNucleusCaller <- function(svmNucleusCaller) {
   }
   df <- svmNucleusCaller$cell_features
   threshold_total_droplets <- round(mean(df[df$training_label_is_cell==FALSE,]$num_transcripts, na.rm=TRUE))
-  return(list(total_droplets_included <- length(which(df$num_transcripts>threshold_total_droplets)),
-              expected_cells=length(which(df$is_cell==TRUE))))
+  total_droplets_included = length(which(df$num_transcripts>threshold_total_droplets))
+  expected_cells=length(which(df$is_cell==TRUE))
+  return(list(total_droplets_included=total_droplets_included,
+              expected_cells=expected_cells))
 }
 
 #' @export
