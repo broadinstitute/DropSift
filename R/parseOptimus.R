@@ -106,12 +106,8 @@ parseH5ad <- function(h5ad_file, expression_matrix_path = "X",
 #' @export
 parseOptimusH5ad<-function (h5ad_file, min_transcripts=20) {
     log_info(paste("Reading expression from Optimus h5ad file [", h5ad_file, "]", sep=""))
-    r=parseH5ad(h5ad_file)
-    r=prepareOptimusDataForNucleiSelection(sparse_matrix=r$dge, obs_df=r$cell_features, min_transcripts=min_transcripts)
-    #gene_names=getOptimusGeneSymbols(h5ad_file)
-    #gene_features=data.frame(gene_names=gene_names)
-    #gene_features$ensembl_ids=rownames(gene_features)
-    #r=c(r, gene_features=gene_features)
+    r <- parseH5ad(h5ad_file)
+    r <- prepareOptimusDataForNucleiSelection(sparse_matrix=r$dge, obs_df=r$cell_features, min_transcripts=min_transcripts)
     return (r)
 }
 
@@ -120,24 +116,29 @@ parseOptimusH5ad<-function (h5ad_file, min_transcripts=20) {
 #formats to the expectations of the SVM expected column names - cell_barcode, num_transcripts, num_reads, pct_intronic, pct_mt
 prepareOptimusDataForNucleiSelection<-function(sparse_matrix, obs_df, min_transcripts=20) {
     #calculate the % intronic
-    obs_df$pct_intronic=(obs_df$reads_mapped_intronic+obs_df$reads_mapped_intronic_as)/obs_df$reads_mapped_uniquely
+    obs_df$pct_intronic <- (obs_df$reads_mapped_intronic+obs_df$reads_mapped_intronic_as)/obs_df$reads_mapped_uniquely
     #calculate the % mt
-    obs_df$pct_mt=(obs_df$reads_mapped_mitochondrial/obs_df$reads_mapped_uniquely)
+    obs_df$pct_mt <- (obs_df$reads_mapped_mitochondrial/obs_df$reads_mapped_uniquely)
     #calculate the number of transcripts
-    obs_df$num_transcripts=colSums(sparse_matrix)
+    obs_df$num_transcripts <- colSums(sparse_matrix)
 
-    df=data.frame(cell_barcode=obs_df$CellID, num_transcripts=obs_df$num_transcripts, num_reads=obs_df$reads_mapped_uniquely, pct_intronic=obs_df$pct_intronic, pct_mt=obs_df$pct_mt)
+    df<- data.frame(cell_barcode=obs_df$CellID,
+                    num_transcripts=obs_df$num_transcripts,
+                    num_reads=obs_df$reads_mapped_uniquely,
+                    pct_intronic=obs_df$pct_intronic,
+                    pct_mt=obs_df$pct_mt)
+
     if ("star_IsCell" %in% colnames(obs_df))
-        df$IsCell=obs_df$star_IsCell
+        df$IsCell <- obs_df$star_IsCell
 
     #filter to at least some minimum number of transcripts.
-    idx=which(df$num_transcripts>=min_transcripts)
-    df=df[idx,]
+    idx <- which(df$num_transcripts>=min_transcripts)
+    df <- df[idx,]
 
     # filter sparse matrix to same barcodes in same order.
-    dge=sparse_matrix[,df$cell_barcode]
+    dge <- sparse_matrix[,df$cell_barcode]
 
-    result=list(dge=dge, cell_features=df)
+    result <- list(dge=dge, cell_features=df)
     return (result)
 }
 
