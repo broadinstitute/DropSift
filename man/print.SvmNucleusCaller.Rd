@@ -11,6 +11,26 @@
 
 \item{...}{Other arguments that are ignored}
 }
+\value{
+Invisibly returns the input \code{SvmNucleusCaller} object.
+}
 \description{
 Print the SvmNucleusCaller object summary
+}
+\examples{
+# Load example dataset
+data(svmNucleusCallerInputs)
+set.seed(1)  # Set seed for reproducibility
+
+# Create an SvmNucleusCaller object
+svmNucleusCaller <- SvmNucleusCaller(
+    cellFeatures = svmNucleusCallerInputs$cellFeatures,
+    dgeMatrix = svmNucleusCallerInputs$dgeMatrix,
+    datasetName = "example_dataset",
+    useCBRBFeatures = FALSE,
+    forceTwoClusterSolution = FALSE
+)
+
+# View summary
+print(svmNucleusCaller)
 }

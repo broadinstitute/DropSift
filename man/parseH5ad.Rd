@@ -2,7 +2,8 @@
 % Please edit documentation in R/parseOptimus.R
 \name{parseH5ad}
 \alias{parseH5ad}
-\title{Parse an 5had file and extract the expression matrix and cell features (obs dataframe)}
+\title{Parse an H5AD file and extract the expression matrix and cell features (obs
+dataframe)}
 \usage{
 parseH5ad(
   h5ad_file,
@@ -12,19 +13,42 @@ parseH5ad(
 )
 }
 \arguments{
-\item{h5ad_file}{Path to the h5ad file}
+\item{h5ad_file}{Path to the h5ad file (can be .h5ad or .h5ad.gz)}
 
-\item{expression_matrix_path}{Path to the raw counts expression matrix in the h5ad file}
+\item{expression_matrix_path}{Path to the raw counts expression matrix in the
+h5ad file}
 
 \item{gene_id_path}{Path to the gene IDs in the h5ad file.}
 
 \item{cell_id_path}{Path to the cell IDs in the h5ad file.}
 }
 \value{
-A list containing the sparse matrix with genes in rows and cell barcodes in columns, and a dataframe of cell features if
-the /obs path exists in the h5ad file.
+A list containing the sparse matrix with genes in rows and cell
+barcodes in columns, and a dataframe of cell features if the obs path
+exists in the h5ad file.
 }
 \description{
-This function tests if the incoming data is organized with genes in rows and cells in columns
-or the transpose.  Output data is always genes in rows and cells in columns (Seurat/DropSeq format)
+This function tests if the incoming data is organized with genes in rows and
+cells in columns or the transpose. Output data is always genes in rows and
+cells in columns (Seurat/DropSeq format).
+}
+\details{
+If the file is gzipped (.h5ad.gz), it is automatically decompressed to a
+temporary file before reading.
+}
+\examples{
+# Load the example h5ad file
+h5ad_file <- system.file("extdata", "adata_example.h5ad.gz", package = "DropSift")
+r <- parseH5ad(h5ad_file)
+dge <- r$dge
+cell_features <- r$cell_features
+# Display output summary
+
+# Check dimensions of the parsed expression matrix
+dim(dge)
+r$dge # The example DGE is 5 cells and 5 genes.
+
+# This cell feature set is the raw outputs from Optimus which are not yet
+# read to be used by DropSift.  See parseOptimusH5ad.
+head(cell_features)
 }

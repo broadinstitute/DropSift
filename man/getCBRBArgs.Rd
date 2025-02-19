@@ -10,12 +10,31 @@ getCBRBArgs(svmNucleusCaller)
 \method{getCBRBArgs}{SvmNucleusCaller}(svmNucleusCaller)
 }
 \arguments{
-\item{svmNucleusCaller}{an object of class SvmNucleusCaller(useCBRBFeatures=FALSE)}
+\item{svmNucleusCaller}{an object of class
+SvmNucleusCaller(useCBRBFeatures=FALSE)}
 }
 \value{
 a list with two elements: total_droplets_included and expected_cells
 }
 \description{
-After running the SVM with useCBRBFeatures=FALSE, get an estimate for --total-droplets-included and --expected-cells
-CellBender remove-background arguments.
+After running the SVM with useCBRBFeatures=FALSE, get an estimate for
+--total-droplets-included and --expected-cells CellBender remove-background
+arguments.
+}
+\examples{
+#Load up the example dataset and run the SVM.
+#This mirrors the included unit test.
+data(svmNucleusCallerInputs)  # Load example dataset
+set.seed(1)  # Set seed for reproducibility
+svmNucleusCaller <- SvmNucleusCaller(
+    svmNucleusCallerInputs$cellFeatures,
+    svmNucleusCallerInputs$dgeMatrix,
+    datasetName = "example_dataset",
+    useCBRBFeatures = FALSE,
+    forceTwoClusterSolution = FALSE
+)
+
+cbrbArgs <- getCBRBArgs(svmNucleusCaller)
+print(cbrbArgs)
+
 }

@@ -16,51 +16,109 @@ runIntronicSVM(
   forceTwoClusterSolution = FALSE,
   outPDF = NULL,
   outFeaturesFile = NULL,
-  outCellBenderInitialParameters = NULL,
-  random.seed = 1
+  outCellBenderInitialParameters = NULL
 )
 }
 \arguments{
-\item{datasetName}{The name of the dataset.  Used for plotting.  Useful to use a unique experimental identifier (UEI) if available.}
+\item{datasetName}{The name of the dataset.  Used for plotting.  Useful to
+use a unique experimental identifier (UEI) if available.}
 
-\item{cellFeaturesFile}{The cell features file.  This file must contain a column cell_barcode that is used to match the cell barcodes in the DGE matrix
-and a num_reads column that defines the number of uniquely mapped reads for the cell.  Additional expected columns
-used to train the SVM are defined by the features vector.}
+\item{cellFeaturesFile}{The cell features file.  This file must contain a
+column cell_barcode that is used to match the cell barcodes in the DGE
+matrix and a num_reads column that defines the number of uniquely mapped
+reads for the cell.  Additional expected columns used to train the SVM are
+defined by the features vector.}
 
-\item{dgeMatrixFile}{A file containing a dense DGE matrix in DropSeq format, or the directory where files in the MTX format exist.
-If a directory is supplied, 3 files are expect in the directory: matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz that encode
-the counts in sparse format, the genes, and the cell barcodes respectively.}
+\item{dgeMatrixFile}{A file containing a dense DGE matrix in DropSeq format,
+or the directory where files in the MTX format exist. If a directory is
+supplied, 3 files are expect in the directory: matrix.mtx.gz,
+features.tsv.gz, barcodes.tsv.gz that encode the counts in sparse format,
+the genes, and the cell barcodes respectively.}
 
-\item{optimusH5File}{The h5ad file produced by the Optimus pipeline.  This input contains both the DGE matrix and the cell features required for cell calling.  Cell level metrics
-are appropriately transformed to match SVM expectations for training.}
+\item{optimusH5File}{The h5ad file produced by the Optimus pipeline.  This
+input contains both the DGE matrix and the cell features required for cell
+calling.  Cell level metrics are appropriately transformed to match SVM
+expectations for training.}
 
-\item{cellProbabilityThreshold}{The probability threshold for selecting cells.  This value scales from 0-1, with 1 being extremely confident/stringent.  Set to null to use the SVM defaults (>0.5 = nuclei).
-This modifies plotting outputs and the output features file classification, but does not filter any cells from the output.}
+\item{cellProbabilityThreshold}{The probability threshold for selecting
+cells.  This value scales from 0-1, with 1 being extremely
+confident/stringent.  Set to null to use the SVM defaults (>0.5 = nuclei).
+This modifies plotting outputs and the output features file classification,
+but does not filter any cells from the output.}
 
-\item{max_umis_empty}{All cell barcodes with fewer than this number of UMIs are not considered for any aspects of nuclei selection.  It is assumed
+\item{max_umis_empty}{All cell barcodes with fewer than this number of UMIs
+are not considered for any aspects of nuclei selection.  It is assumed
 these cell barcodes have fewer UMIs than the ambient RNA.}
 
-\item{features}{A list of features to use for cell selection.  The features are used to train the SVM.  These features are columns
-of the cell features data frame, with the exception of empty_gene_module_score, which is generated from the gene expression data.}
+\item{features}{A list of features to use for cell selection.  The features
+are used to train the SVM.  These features are columns of the cell features
+data frame, with the exception of empty_gene_module_score, which is
+generated from the gene expression data.}
 
-\item{useCBRBFeatures}{When true, the cell bender feature frac_contamination is used for cell selection.
-When false, these features are not used.  This modifies the features argument.}
+\item{useCBRBFeatures}{When true, the cell bender feature frac_contamination
+is used for cell selection. When false, these features are not used.  This
+modifies the features argument.}
 
-\item{forceTwoClusterSolution}{When true, the initialization of the SVM will attempt to find a solution with two clusters.
-In cases where an experiment is overloaded with nuclei, this may correct the initial set of nuclei and empty droplets selected.
-This argument is specific to the density-style selection of exemplars that is only applicable when useCBRBFeatures is false.}
+\item{forceTwoClusterSolution}{When true, the initialization of the SVM will
+attempt to find a solution with two clusters. In cases where an experiment
+is overloaded with nuclei, this may correct the initial set of nuclei and
+empty droplets selected. This argument is specific to the density-style
+selection of exemplars that is only applicable when useCBRBFeatures is
+false.}
 
 \item{outPDF}{The PDF file to write the plots to.}
 
-\item{outFeaturesFile}{The cell features dataframe, further annotated by the SVM to include the cell probability and label,
-along with which cell barcodes were used for training.}
+\item{outFeaturesFile}{The cell features dataframe, further annotated by the
+SVM to include the cell probability and label, along with which cell
+barcodes were used for training.}
 
-\item{outCellBenderInitialParameters}{If useCBRBFeatures is false and this parameter is not null, the SVM
-is trained without cellbenber features, and the parameters expected_cells and total_droplets_included are
+\item{outCellBenderInitialParameters}{If useCBRBFeatures is false and this
+parameter is not null, the SVM is trained without cellbenber features, and
+the parameters expected_cells and total_droplets_included are
 estimated and written to this file.}
-
-\item{random.seed}{The random seed to use for reproducibility.  Pass NA to disable setting the random seed.}
+}
+\value{
+This function does not return a value. Instead, the results are
+written to the specified output files (\code{outPDF}, \code{outFeaturesFile}, and
+\code{outCellBenderInitialParameters}).
 }
 \description{
-A convenience method for calling cells using an SVM trained on cell summary features.
+A convenience method for calling cells using an SVM trained on cell summary
+features.
+}
+\details{
+Please set a random seed for reproducibility, e.g., \code{set.seed(1)}. This
+ensures that the SVM initialization and training are consistent across runs.
+}
+\examples{
+# Create a temporary directory for test data
+temp_dir <- tempdir()
+
+# Write example data to files
+dge_files <- writeExampleSvmNucleusCallerInputs(temp_dir)
+cell_features_file <- writeExampleCellFeatures(temp_dir)
+
+# Define output file paths
+out_pdf_file <- file.path(temp_dir, "output.pdf")
+out_features_file <- file.path(temp_dir, "classified_features.tsv")
+
+# Run the function
+runIntronicSVM(
+   datasetName = "example_dataset",
+   cellFeaturesFile = cell_features_file,
+   dgeMatrixFile = temp_dir,  # Pass the directory containing the compressed 10x files
+   useCBRBFeatures = FALSE,
+   forceTwoClusterSolution = FALSE,
+   outPDF = out_pdf_file,
+   outFeaturesFile = out_features_file
+)
+
+# Check that output files were generated
+file.exists(out_pdf_file)    # Should return TRUE
+file.exists(out_features_file)  # Should return TRUE
+
+# Inspect the PDF output report
+if (file.exists(out_pdf_file)) {
+   utils::browseURL(out_pdf_file)
+}
 }

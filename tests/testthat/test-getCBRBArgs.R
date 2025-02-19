@@ -8,5 +8,5 @@ test_that("CBRB argument estimation", {
         useCBRBFeatures = FALSE,
         forceTwoClusterSolution = FALSE)
     cbrbArgs = getCBRBArgs(svmNucleusCaller)
-    expect_equal(cbrbArgs, list(total_droplets_included=4315, expected_cells=756))
+    expect_equal(cbrbArgs, list(total_droplets_included=2195, expected_cells=376))
 })
