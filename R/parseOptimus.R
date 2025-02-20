@@ -27,7 +27,8 @@
 #' @export
 #' @examples
 #' # Load the example h5ad file
-#' h5ad_file <- system.file("extdata", "adata_example.h5ad.gz", package = "DropSift")
+#' h5ad_file <- system.file("extdata", "adata_example.h5ad.gz", package =
+#' "DropSift")
 #' r <- parseH5ad(h5ad_file)
 #' dge <- r$dge
 #' cell_features <- r$cell_features
@@ -118,7 +119,9 @@ load_h5ad_expression <- function(h5ad_file, expression_matrix_path) {
 
 #' Determine matrix dimensions and check orientation
 #' @noRd
-get_matrix_orientation <- function(csr_indices, csr_indptr, num_genes, num_cells) {
+get_matrix_orientation <- function(csr_indices,
+    csr_indptr, num_genes, num_cells) {
+
     matrix_rows <- length(csr_indptr) - 1
     matrix_cols <- max(csr_indices) + 1
     transpose_needed <- FALSE
@@ -173,21 +176,23 @@ load_h5ad_obs <- function(h5ad_file) {
 #' @export
 #' @examples
 #' # Load the example h5ad file
-#' h5ad_file <- system.file("extdata", "adata_example.h5ad.gz", package = "DropSift")
+#' h5ad_file <- system.file("extdata", "adata_example.h5ad.gz", package =
+#' "DropSift")
 #' r <- parseOptimusH5ad(h5ad_file, min_transcripts=0)
 #' dge <- r$dge
 #' cell_features <- r$cell_features
 #' # Display output summary
 #' dim(dge)  # Check dimensions of the parsed expression matrix
 #' r$dge # The example DGE is 5 cells and 5 genes
-#' #This cell feature set is processed to include the features needed for DropSift.
+#' #This cell feature set is processed to include the features needed for
+#' DropSift.
 #' head(cell_features)  # Preview the cell features dataframe.
 parseOptimusH5ad <- function(h5ad_file, min_transcripts = 20) {
     log_info(paste("Reading expression from Optimus h5ad file [", h5ad_file,
         "]", sep = ""))
     r <- parseH5ad(h5ad_file)
-    r <- prepareOptimusDataForNucleiSelection(sparse_matrix = r$dge, obs_df = r$cell_features,
-        min_transcripts = min_transcripts)
+    r <- prepareOptimusDataForNucleiSelection(sparse_matrix = r$dge,
+        obs_df = r$cell_features, min_transcripts = min_transcripts)
     return(r)
 }
 
@@ -199,14 +204,20 @@ parseOptimusH5ad <- function(h5ad_file, min_transcripts = 20) {
 prepareOptimusDataForNucleiSelection <- function(sparse_matrix, obs_df,
     min_transcripts = 20) {
     # calculate the % intronic
-    obs_df$pct_intronic <- (obs_df$reads_mapped_intronic + obs_df$reads_mapped_intronic_as)/obs_df$reads_mapped_uniquely
+    obs_df$pct_intronic <- (obs_df$reads_mapped_intronic +
+        obs_df$reads_mapped_intronic_as)/obs_df$reads_mapped_uniquely
+
     # calculate the % mt
-    obs_df$pct_mt <- (obs_df$reads_mapped_mitochondrial/obs_df$reads_mapped_uniquely)
+    obs_df$pct_mt <-
+        (obs_df$reads_mapped_mitochondrial/obs_df$reads_mapped_uniquely)
+
     # calculate the number of transcripts
     obs_df$num_transcripts <- colSums(sparse_matrix)
 
-    df <- data.frame(cell_barcode = obs_df$CellID, num_transcripts = obs_df$num_transcripts,
-        num_reads = obs_df$reads_mapped_uniquely, pct_intronic = obs_df$pct_intronic,
+    df <- data.frame(cell_barcode = obs_df$CellID,
+        num_transcripts = obs_df$num_transcripts,
+        num_reads = obs_df$reads_mapped_uniquely,
+        pct_intronic = obs_df$pct_intronic,
         pct_mt = obs_df$pct_mt)
 
     if ("star_IsCell" %in% colnames(obs_df)) {
@@ -228,7 +239,7 @@ getOptimusGeneSymbols <- function(h5ad_file) {
     # Get the gene names.  Gene names can be repeated.  Read gene
     # indices and corresponding gene names
     gene_indices <- h5read(h5ad_file, "/var/Gene")  # Gene indices
-    gene_names <- h5read(h5ad_file, "/var/__categories/Gene")  # Actual gene names
+    gene_names <- h5read(h5ad_file, "/var/__categories/Gene")
 
     # Map indices to names (if necessary) If the indices are numeric,
     # they map directly to the gene names

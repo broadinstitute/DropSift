@@ -106,7 +106,7 @@ out_features_file <- file.path(temp_dir, "classified_features.tsv")
 runIntronicSVM(
    datasetName = "example_dataset",
    cellFeaturesFile = cell_features_file,
-   dgeMatrixFile = temp_dir,  # Pass the directory containing the compressed 10x files
+   dgeMatrixFile = temp_dir,  # directory with compressed 10x files
    useCBRBFeatures = FALSE,
    forceTwoClusterSolution = FALSE,
    outPDF = out_pdf_file,

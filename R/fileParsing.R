@@ -25,7 +25,8 @@
 #' cell_features_file=writeExampleCellFeatures(temp_dir)
 #'
 #' # Load example cell features
-#' cell_features <- read.table(cell_features_file, sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+#' cell_features <- read.table(cell_features_file, sep = "\t", header = TRUE,
+#' stringsAsFactors = FALSE)
 #'
 #' # Read the DGE matrix and reorder it to match the cell_features barcodes
 #' dge_matrix <- readDgeFile(dge_file, cell_features)
@@ -42,20 +43,25 @@
 #' # Cell barcodes have a different sort order.
 #' head(dge_matrix[, 1:5])  # Preview the first few columns
 readDgeFile <- function(dgeMatrixFile, cell_features = NULL) {
+
+    errMsg<- paste0("The cell barcodes in the DGE matrix do not match the cell",
+        "barcodes in the cell features file.")
+
     dgeMatrix <- NULL
     if (!is.null(dgeMatrixFile)) {
         dgeMatrix <- readDgeMatrixOptionallySparse(dgeMatrixFile)
         # validate the dgeMatrix contains all the cell barcodes in
         # the report
-        if (!is.null(cell_features) & !all(colnames(dgeMatrix) %in% cell_features$cell_barcode)) {
-            stop("The cell barcodes in the DGE matrix do not match the cell barcodes in the cell features file.")
+        if (!is.null(cell_features) &
+            !all(colnames(dgeMatrix) %in% cell_features$cell_barcode)) {
+            stop(errMsg)
         }
         # reorder the dgeMatrix to match the cell_features order
         if (!is.null(cell_features)) {
             dgeMatrix <- dgeMatrix[, match(cell_features$cell_barcode,
                 colnames(dgeMatrix))]
             if (any(cell_features$cell_barcode != colnames(dgeMatrix))) {
-                stop("Cell barcodes in the DGE matrix do not match the cell barcodes in the cell features file.")
+                stop(errMsg)
             }
         }
     }
@@ -111,7 +117,8 @@ parse10xMTX <- function(dgeMatrixFile) {
         log_info("Done parsing expression data")
         return(dge)
     } else {
-        strErrorMessage <- paste("The directory [", dgeMatrixFile, "] does not contain the required files for a 10X mtx file.  Missing files: ",
+        strErrorMessage <- paste("The directory [", dgeMatrixFile, "] does not",
+            " contain the required files for a 10X mtx file.  Missing files: ",
             sep = "")
         if (!mtxExists) {
             strErrorMessage <- paste(strErrorMessage, "matrix.mtx.gz")
@@ -122,7 +129,8 @@ parse10xMTX <- function(dgeMatrixFile) {
         if (!barcodeExists) {
             strErrorMessage <- paste(strErrorMessage, "barcodes.tsv.gz")
         }
-        stop("The directory does not contain the required files for a 10X mtx file.")
+        stop("The directory does not contain the required files for ",
+            "a 10X mtx file.")
     }
 }
 
@@ -150,7 +158,8 @@ fastRead <- function(inFile, comment_regexp = NA, ...) {
         unzip_command <- paste("gunzip", "-c", shQuote(inFile))
 
         if (!is.na(comment_regexp)) {
-            unzip_command <- paste0(unzip_command, sprintf(" | egrep -v '%s'", comment_regexp))
+            unzip_command <- paste0(unzip_command, sprintf(" | egrep -v '%s'",
+                comment_regexp))
         }
 
         # Handle different versions of data.table fread
@@ -168,7 +177,8 @@ fastRead <- function(inFile, comment_regexp = NA, ...) {
 
     # Handle regular files (non-gzipped)
     if (!is.na(comment_regexp)) {
-        return(data.table::fread(cmd = sprintf("egrep -v '%s' %s", comment_regexp, shQuote(inFile)),
+        return(data.table::fread(cmd = sprintf("egrep -v '%s' %s",
+            comment_regexp, shQuote(inFile)),
             data.table = TRUE, ...))
     }
 
@@ -197,8 +207,9 @@ fastReadBigGz <- function(inFile, ...) {
     on.exit(unlink(t), add = TRUE)
 
     # Run gunzip properly
-    retval <- system2("gunzip", args = c("-c", inFile), stdout = t, stderr = FALSE) !=
-        0
+    retval <- system2("gunzip", args = c("-c", inFile), stdout = t,
+        stderr = FALSE) !=0
+
     if (retval != 0) {
         stop(cmd, "failed with status", retval)
     }
@@ -217,7 +228,8 @@ read_dge_gz <- function(file, decreasing_order_by_size = TRUE) {
     dge <- fastRead(file, comment_regexp = "^#", header = TRUE)
     setkey(dge, GENE)
     gene_names <- dge$GENE
-    GENE <- NULL  # Silence R CMD check warning https://www.r-bloggers.com/2019/08/no-visible-binding-for-global-variable/
+    #https://www.r-bloggers.com/2019/08/no-visible-binding-for-global-variable/
+    GENE <- NULL  # Silence R CMD check warning
     dge[, GENE := NULL]
     rownames(dge) <- gene_names
 
@@ -249,12 +261,12 @@ read_dge_gz <- function(file, decreasing_order_by_size = TRUE) {
 #' @noRd
 readCellFeatures <- function(cellFeaturesFile, requiredColumns = NULL,
     verbose = TRUE) {
-    cell_features <- utils::read.table(cellFeaturesFile, stringsAsFactors = FALSE,
-        header = TRUE)
+    cell_features <- utils::read.table(cellFeaturesFile,
+        stringsAsFactors = FALSE, header = TRUE)
 
     if (verbose && "num_transcripts" %in% colnames(cell_features)) {
-        message(nrow(cell_features), " rows in file (", min(cell_features$num_transcripts),
-            "+ UMIs)")
+        message(nrow(cell_features), " rows in file (",
+        min(cell_features$num_transcripts), "+ UMIs)")
     }
     return(cell_features)
 }

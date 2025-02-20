@@ -38,7 +38,8 @@ temporary file before reading.
 }
 \examples{
 # Load the example h5ad file
-h5ad_file <- system.file("extdata", "adata_example.h5ad.gz", package = "DropSift")
+h5ad_file <- system.file("extdata", "adata_example.h5ad.gz", package =
+"DropSift")
 r <- parseH5ad(h5ad_file)
 dge <- r$dge
 cell_features <- r$cell_features

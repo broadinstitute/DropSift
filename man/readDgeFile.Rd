@@ -36,7 +36,8 @@ dge_file <- writeExampleDenseDGE(temp_dir)
 cell_features_file=writeExampleCellFeatures(temp_dir)
 
 # Load example cell features
-cell_features <- read.table(cell_features_file, sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+cell_features <- read.table(cell_features_file, sep = "\t", header = TRUE,
+stringsAsFactors = FALSE)
 
 # Read the DGE matrix and reorder it to match the cell_features barcodes
 dge_matrix <- readDgeFile(dge_file, cell_features)
