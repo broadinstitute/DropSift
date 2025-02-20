@@ -149,8 +149,6 @@ runIntronicSVM <- function(datasetName, cellFeaturesFile = NULL,
     }
 }
 
-
-
 #' Select cells using an SVM trained on cell summary features
 #'
 #' @param dataset_name The name of the dataset.  Used for plotting.  Useful to
@@ -167,137 +165,97 @@ runIntronicSVM <- function(datasetName, cellFeaturesFile = NULL,
 callByIntronicSVM <- function(dataset_name, cell_features, dgeMatrix,
     cellProbabilityThreshold = NULL, max_umis_empty = 50,
     features, forceTwoClusterSolution = FALSE) {
-    # validate the features are in the cell_features data frame.  do
-    # not look at empty_gene_module_score, as it is constructed.
-    for (f in setdiff(features, "empty_gene_module_score")) {
-        if (!(f %in% colnames(cell_features))) {
-            strLog <- paste("Requested Features [",
-                paste(features, collapse = ", "),
-                "]. Feature", f, "not found in cell_features data frame.")
-            stop(strLog)
-        }
-    }
 
-    # CBRB specific parameter, hard-coded, used by multiple functions
-    # if CBRB mode is enabled.
-    maxContaminationThreshold <- 0.1
-
+    validateFeaturePresence(cell_features, features)
+    maxContaminationThreshold <- 0.1  # CBRB-specific contamination threshold
     log_info("Beginning SVM Intronic Cell Selection")
-    log_info(paste("Features used for cell selection", paste(features,
-        collapse = ", ")))
-
-    # swap the cell barcodes into the row names.
+    log_info(paste("Features used for cell selection:", paste(features, collapse = ", ")))
     rownames(cell_features) <- cell_features$cell_barcode
     cell_features$cell_barcode <- NULL
-
-    # check if we are using the CBRB features
     useCellBenderFeatures <- "frac_contamination" %in% features
 
-    # Gather the training data bounds
-    allBounds <- findTrainingDataBounds(cell_features,
-        max_umis_empty = max_umis_empty,
+    allBounds <- findTrainingDataBounds(cell_features, max_umis_empty,
         useCellBenderFeatures = useCellBenderFeatures,
         forceTwoClusterSolution = forceTwoClusterSolution)
-
     bounds_empty <- allBounds$bounds_empty
     bounds_non_empty <- allBounds$bounds_non_empty
-
-    # label cell vs not for training.  Test data is NA.  Bounds are
-    # always 'extended' so get rid of the extra plot annotations.
     cell_features_labeled <- labelTrainingData(cell_features, bounds_empty,
-        bounds_non_empty, maxContaminationThreshold = maxContaminationThreshold,
-        useCellBenderFeatures = useCellBenderFeatures)
+        bounds_non_empty, maxContaminationThreshold, useCellBenderFeatures)
     logTrainingDataSelection(cell_features_labeled)
-
-    # Add the gene module score to the cell features.  generate the
-    # gene module plots.
-    r <- addGeneModules(cell_features_labeled = cell_features_labeled,
-        dgeMatrix = dgeMatrix, numGenes = 100,
+    r <- addGeneModules(cell_features_labeled, dgeMatrix, numGenes = 100,
         useCellBenderFeatures = useCellBenderFeatures, verbose = FALSE)
-
     cell_features_labeled <- r$cell_features
+
     geneModulePlots <-
         r$gene_module_plots[seq_len(min(4, length(r$gene_module_plots)))]
-
-    # in the rare case where there are no differentially expressed
-    # genes to generate a module score drop the feature from
-    # downstream analysis.
     if (!"empty_gene_module_score" %in% colnames(cell_features_labeled)) {
-        log_warn("empty_gene_module_score was not computed. Dropping feature .")
+        log_warn("empty_gene_module_score was not computed. Dropping feature.")
         features <- setdiff(features, "empty_gene_module_score")
     }
 
-    # modal - if not using the cellbender features, this plot is
-    # empty.
-    p1 <- plotExpressionVsIntronic(cell_features_labeled,
-        title = "All cell barcodes",
-        useCellBenderFeatures = useCellBenderFeatures)
-
-    p2 <- cowplot::ggdraw(function()
-        plotCellTypeIntervals(cell_features_labeled,
-        bounds_empty, bounds_non_empty))
-
-    # Run the SVM - this scales the feautures, trains the model, and
-    # predicts all cell barcode labels/probabilties.
-    svm_result <- runSVM(cell_features_labeled, features,
-        bounds_empty = bounds_empty,
-        cellProbabilityThreshold = cellProbabilityThreshold)
-
+    svm_result <- runSVM(cell_features_labeled, features, bounds_empty,
+        cellProbabilityThreshold)
     cell_features_result <- svm_result$cell_features
     trainingData <- svm_result$trainingData
 
-    # plotting
-    p3 <- plotSelectedCells(cell_features_result)
+    selectionPlots <- createSelectionVisualization(cell_features_result, bounds_empty,
+        bounds_non_empty, useCellBenderFeatures, dataset_name)
+    feature_plot <- plotScaledTrainingDataFeatures(
+        svm_result$trainingData[, c(features, "training_label_is_cell")]
+    )
+    log_info("Nuclei selection finished")
+    return(list(dataset_name = dataset_name,
+        cell_features = svm_result$cell_features,
+        features = features, plots = selectionPlots,
+        featurePlot = feature_plot, geneModulePlots = geneModulePlots,
+        bounds_empty = bounds_empty, bounds_non_empty = bounds_non_empty))
+}
 
-    strTitlePrefix <- "SVM nuclei method"
-    # add the ambient peak to the title
-    ambientPeak <- round(median(
-        cell_features_result[which(cell_features_result$is_cell ==FALSE), ]
-        $num_transcripts))
+validateFeaturePresence <- function(cell_features, features) {
+    for (f in setdiff(features, "empty_gene_module_score")) {
+        if (!(f %in% colnames(cell_features))) {
+            stop(paste("Requested Features [", paste(features, collapse = ", "),
+                "]. Feature", f, "not found in cell_features data frame."))
+        }
+    }
+}
 
-    strAmbientPeak <- sprintf(", ambient peak(UMIs) %d", ambientPeak)
 
-    p4 <- plotCellProbabilities(cell_features_result,
-            strTitle = "Cell Probability")
+createSelectionVisualization <- function(cell_features_labeled, bounds_empty,
+    bounds_non_empty, useCellBenderFeatures, dataset_name) {
+    p1 <- plotExpressionVsIntronic(cell_features_labeled, title = "All cell barcodes",
+        useCellBenderFeatures = useCellBenderFeatures)
+
+    p2 <- cowplot::ggdraw(function()
+        plotCellTypeIntervals(cell_features_labeled, bounds_empty, bounds_non_empty))
+
+    p3 <- plotSelectedCells(cell_features_labeled)
+    p4 <- plotCellProbabilities(cell_features_labeled, strTitle = "Cell Probability")
+
+    ambientPeak <- round(median(cell_features_labeled[
+        which(cell_features_labeled$is_cell == FALSE), ]$num_transcripts))
 
     p5 <- ggdraw(function() {
-        plotSelectedCellsSmoothScatter(cell_features_result,
+        plotSelectedCellsSmoothScatter(cell_features_labeled,
             transcriptFeature = "num_transcripts",
-            strTitlePrefix = paste0(strTitlePrefix, strAmbientPeak))})
+            strTitlePrefix = paste0("SVM nuclei method, ambient peak(UMIs) ", ambientPeak))
+    })
 
-    p6 <- ggplot() + theme_void()  # empty plot
+    p6 <- ggplot() + theme_void()
     if (useCellBenderFeatures) {
         p6 <- ggdraw(function() {
-            plotSelectedCellsSmoothScatter(cell_features_result,
+            plotSelectedCellsSmoothScatter(cell_features_labeled,
                 transcriptFeature = "num_retained_transcripts",
-                strTitlePrefix = strTitlePrefix,
+                strTitlePrefix = "SVM nuclei method",
                 useCellBenderFeatures = useCellBenderFeatures)
         })
     }
 
-    # this new plot is only tracked for the DGE enabled SVM
-    # unforunately it needs the full SVM to be run before it can be
-    # calculated
-    if (!is.null(geneModulePlots)) {
-        geneModulePlots[["cell_probability_histogram"]] <-
-            plotCellProbabilityConditionalCbrb(cell_features_result,
-            frac_contamination_threshold = 1,
-            useCellBenderFeatures = useCellBenderFeatures)
-    }
-
-    feature_plot <- plotScaledTrainingDataFeatures(trainingData[, c(features,
-        "training_label_is_cell")])
-    log_info("Nuclei selection finished")
-    plot_list <- list(cellbender = p1, initialization = p2,
-        selected_nuceli = p3, nuceli_probability = p4,
-        selected_nuclei_density = p5, selected_nuclei_density_rb = p6)
-
-    return(list(dataset_name = dataset_name,
-        cell_features = cell_features_result,
-        features = features, plots = plot_list, featurePlot = feature_plot,
-        geneModulePlots = geneModulePlots, bounds_empty = bounds_empty,
-        bounds_non_empty = bounds_non_empty))
+    return(list(cellbender = p1, initialization = p2, selected_nuclei = p3,
+                nuclei_probability = p4, selected_nuclei_density = p5,
+                selected_nuclei_density_rb = p6))
 }
+
 
 ################## INPUT VALIDATION
 
@@ -498,331 +456,6 @@ findTraingDataBoundsCBRB <- function(cell_features, max_umis_empty = 50,
     return(result)
 }
 
-
-#' Find the training data bounds using only the \% intronic and num_transcripts
-#' features
-#'
-#' This function uses a turning point method to find the largest peak and a peak
-#' after that to define a linear separation of the data into the set that likely
-#' contains empty droplets and the part of the data that contains non-empty
-#' droplets. It then selects areas of maximum density within each of the two
-#' partitions.
-#'
-#' @param cell_features A dataframe containing the dataset with at least columns
-#'   num_transcripts and pct_intronic.
-#' @param max_umis_empty Exclude cell barcodes from analysis with fewer than
-#'   this many UMIs. This is used to exclude very small barcodes that are noise
-#'   and may confuse the initial turning point threshold.
-#' @param umiThresholdOverride A numeric value to override the UMI threshold. If
-#'   NULL, the function will find the UMI threshold using the turning point
-#'   method. If not NULL, use an initial estimate provided by another means.
-#' @param verbose Logical. if TRUE, prints verbose output to the log.
-#'
-#' @return A list with the training data bounds.
-#' @noRd
-findTrainingDataBoundsDefault <- function(cell_features, max_umis_empty = 50,
-    umiThresholdOverride = NULL, verbose = TRUE) {
-    # drop very small empty cell barcodes
-    df <- cell_features[cell_features$num_transcripts >= max_umis_empty,
-        ]
-
-    # could I split cell barcodes into two groups using the the low
-    # density region in-between the peaks?  This will be used to
-    # subtract the ambient peak and low UMI cell barcodes using the
-    # gridsearch to find non-NA results, which makes this more
-    # robust.
-    umiThreshold <- umiThresholdOverride
-    if (is.null(umiThreshold)) {
-        umiThreshold <-
-            PitAfterHighestPeakWithGridSearch(log10(df$num_transcripts))
-    }
-
-    if (verbose) {
-        log_info("Initial UMI Threshold [", round(umiThreshold, 3), "]")
-    }
-
-    df2 <- df[log10(df$num_transcripts) < umiThreshold, ]
-
-    # get the highest density interval, this is normally the ambient
-    # peak.
-    bounds_empty <- getEmptyCellsByDensity(cell_features = df2,
-        yAxisFeature = "pct_intronic", pctDensity = 75, showPlot = FALSE,
-        verbose = verbose)
-
-    # if unable to select bounds from this umiThreshold of the data,
-    # exit out.
-    if (is.null(bounds_empty)) {
-        bounds_empty$umi_upper_bound <- umiThreshold
-        bounds_non_empty <- data.frame(umi_lower_bound = NA,
-            umi_upper_bound = NA, intronic_lower_bound = NA,
-            intronic_upper_bound = NA)
-        result <- list(bounds_empty = bounds_empty,
-            bounds_non_empty = bounds_non_empty)
-        return(result)
-    }
-
-    # consider all cells to the right of the division.
-    df2 <- df[log10(df$num_transcripts) > umiThreshold, ]
-
-    # early exit if there's no data left.
-    if (nrow(df2) == 0) {
-        log_warn("No data left after selecting empty barcodes.")
-        bounds_empty$umi_upper_bound <- umiThreshold
-        bounds_non_empty <- data.frame(umi_lower_bound = NA,
-            umi_upper_bound = NA, intronic_lower_bound = NA,
-            intronic_upper_bound = NA)
-        result <- list(bounds_empty = bounds_empty,
-            bounds_non_empty = bounds_non_empty)
-        return(result)
-    }
-
-    # select the maximum %intronic and UMIs density from the
-    # remaining data.  Use a tighter bound, and extract the
-    # %intronic.
-    bounds_non_empty_intronic <-
-        getHighestDensityIntervalsEnforcedSmoothing(df2,
-        yAxisFeature = "pct_intronic", pctDensity = 75, maxPeaksExpected = 1,
-        showPlot = FALSE)
-    df3 <- df2[df2$pct_intronic >= bounds_non_empty_intronic$intronic_lower_bound &
-        df2$pct_intronic <= bounds_non_empty_intronic$intronic_upper_bound,
-        ]
-    # then rerun on that intronic slide to get the num UMIs.
-    bounds_non_empty_transcripts <-
-        getHighestDensityIntervalsEnforcedSmoothing(df3,
-        yAxisFeature = "pct_intronic", pctDensity = 75, showPlot = FALSE)
-
-    # Extend the upper bound UMI bound to the 99th quantile
-    topUMI <- as.numeric(stats::quantile(log10(df3$num_transcripts), 0.995))
-    bounds_non_empty_transcripts$umi_upper_bound <- topUMI
-
-    # merge the two bounds into a single data frame.
-    bounds_non_empty <- data.frame(
-        umi_lower_bound = bounds_non_empty_transcripts$umi_lower_bound,
-        umi_upper_bound = bounds_non_empty_transcripts$umi_upper_bound,
-        intronic_lower_bound = bounds_non_empty_intronic$intronic_lower_bound,
-        intronic_upper_bound = bounds_non_empty_intronic$intronic_upper_bound)
-
-    result <- list(bounds_empty = bounds_empty, bounds_non_empty = bounds_non_empty)
-    return(result)
-}
-
-#' Find the training data bounds using an iterative approach
-#'
-#' This replaces findTrainingDataBoundsDefault with an iterative approach to
-#' find the training data bounds. This function performs an iterative process to
-#' select the initial empty/nuclei clusters by adjusting the density smoothing
-#' factor, computing UMI thresholds, and optimizing based on silhouette scores.
-#' The function applies a grid search over the density adjustments to identify
-#' the optimal UMI threshold for separating nuclei and empty droplets.
-#'
-#' @param cell_features A dataframe containing an entry for each cell barcode
-#'   with columns num_transcripts and pct_intronic.
-#' @param max_umis_empty Exclude cell barcodes from analysis with fewer than
-#'   this many UMIs. This threshold should exclude noisy barcodes, but not
-#'   exclude the empty droplet cloud.
-#' @param method A character string specifying the method to use for selecting
-#'   the UMI threshold. Options are: PitAfterHighestPeak (default) and
-#'   PitBetweenHighestPeaks. The former selects the UMI threshold after the
-#'   highest peak in the density plot, while the latter selects the UMI
-#'   threshold between the two highest peaks in the density plot.
-#' @param smoothingMultiple A numeric multiplier that controls the rate of
-#'   smoothing adjustment. Default is 1.1.
-#' @param max_iterations Maximum number of iterations for adjusting the
-#'   smoothing factor. Default is 10.
-#' @param early_termination_threshold Numeric value representing the percentage
-#'   drop in silhouette score for early termination. Default is 0.05.
-#' @param verbose Print verbose output to log
-#' @return A list containing A dataframe with columns smoothingMultipliers,
-#'   umiThresholds, and silhouetteScores for each iteration. The bounds found
-#'   for the maximum silhouette score and the maximum silhouette score.
-#'
-#' @import logger
-#' @noRd
-findTrainingDataBoundsDefaultIterative <- function(cell_features,
-    max_umis_empty = 50,
-    method = c("PitAfterHighestPeak", "PitBetweenHighestPeaks"),
-    smoothingMultiple = 1.1,
-    max_iterations = 10,
-    early_termination_threshold = 0.05,
-    verbose = TRUE) {
-    # Ensure the method is one of the allowed options
-    method <- match.arg(method)
-
-    if (verbose) {
-        msg<-paste( "Starting iterative smoothing with silhouette analysis to",
-        "select initial empty/nuclei clusters using method [", method, "]")
-        log_info(msg)
-    }
-
-    # Filter data with num_transcripts >= 50 (moved outside the loop)
-    if (verbose) {
-        log_info("Filtering data with num_transcripts >= ", max_umis_empty,
-            " for training data bounds.")
-    }
-
-    df_filtered <-
-        cell_features[cell_features$num_transcripts >= max_umis_empty,]
-
-    # Log10 transform num_transcripts
-    x <- log10(df_filtered$num_transcripts + 1)
-
-    # Initialize lists to store results within the loop
-    results <- list(smoothingMultiplierList = c(), umiThresholdList = c(),
-        silhouetteList = c())
-
-    # Helper function to accumulate results
-    accumulate_results <- function(results, smoothing, umi, silhouette,
-        log_message = NULL, verbose = TRUE) {
-        results$smoothingMultiplierList <- c(results$smoothingMultiplierList,
-            smoothing)
-        results$umiThresholdList <- c(results$umiThresholdList, umi)
-        results$silhouetteList <- c(results$silhouetteList, silhouette)
-        if (!is.null(log_message) & verbose)
-            log_info(log_message)
-        return(results)  # Return the updated results list
-    }
-
-    # Initialize smoothing multiplier
-    smoothingMultiplier <- 1
-
-    # Track the best score so far
-    best_silhouette <- -Inf
-    best_bounds <- NULL
-    best_umi_threshold <- NULL
-
-    # Iterate through the smoothing and silhouette calculations
-    for (iter in seq_len(max_iterations)) {
-        # Compute density adjustment range
-        denRange <- seq(0.25, 3, 0.25)^smoothingMultiplier
-
-        # Perform density estimation
-        den <- density(x, adjust = mean(denRange), n = 200)
-
-        # Find the UMI threshold using the selected method.
-        if (method == "PitAfterHighestPeak") {
-            umiThreshold <-
-                PitAfterHighestPeakWithGridSearch(x, adjust = denRange)
-        } else if (method == "PitBetweenHighestPeaks") {
-            umiThreshold <-
-                PitBetweenHighestPeaksWithGridSearch(x, adjust = denRange)
-        } else {
-            msg<-paste("Invalid method. Must be one of 'PitAfterHighestPeak'",
-                "or 'PitBetweenHighestPeaks'")
-            stop(msg)
-        }
-
-        # if the umiThreshold is NA, the gridsarch failed.  Maybe a
-        # higher bandwidth will work...  the
-        # findTrainingDataBoundsDefault function will fail with an NA
-        # umi threshold, so don't even try.
-        if (is.na(umiThreshold)) {
-            results <- accumulate_results(results, smoothingMultiplier,
-                umiThreshold, NA,
-                "PitAfterHighestPeakWithGridSearch NA. Trying next iter",
-                verbose = verbose)
-            next
-        }
-
-        # Get the bounds using custom findTrainingDataBoundsDefault
-        # function
-        bounds <- findTrainingDataBoundsDefault(df_filtered,
-            max_umis_empty = max_umis_empty,
-            umiThresholdOverride = umiThreshold, verbose = FALSE)
-
-        if (is.null(bounds)) {
-            strLog <- paste("Bounds Empty UMI [", )
-            results <- accumulate_results(results, smoothingMultiplier,
-                umiThreshold, NA)
-            next
-        }
-
-        # label the data with clusters for the silhouette score
-        cell_features_labeled <- labelTrainingData(df_filtered,
-            bounds$bounds_empty, bounds$bounds_non_empty,
-            maxContaminationThreshold = NULL, useCellBenderFeatures = FALSE,
-            verbose = FALSE)
-
-        # Calculate silhouette score
-        silhouetteResult <- calculate_silhouette(cell_features_labeled,
-            showPlot = FALSE, verbose = FALSE)
-        score <- silhouetteResult$mean_silhouette
-
-        if (is.na(score)) {
-            results <- accumulate_results(results, smoothingMultiplier,
-                umiThreshold, NA, "Silhouette score is NA. Trying next iteration.",
-                verbose = verbose)
-            next
-        }
-
-        if (score > best_silhouette) {
-            best_silhouette <- score
-            best_bounds <- bounds
-            best_umi_threshold <- umiThreshold
-        }
-
-        results <- accumulate_results(results, smoothingMultiplier, umiThreshold,
-            score, paste("Average silhouette score:", round(score, 3),
-                "at UMI threshold", round(umiThreshold, 2)), verbose = verbose)
-
-        # Check for early termination: if current score is X% lower
-        # than the best score
-        if (score < (1 - early_termination_threshold) * best_silhouette) {
-            if (verbose) {
-                log_info(
-                    sprintf(
-                        "Early termination: Silhouette score dropped by more than %.1f%%",
-                        early_termination_threshold * 100
-                    )
-                )
-            }
-            break
-        }
-
-        # Update the smoothing multiplier for the next iteration
-        smoothingMultiplier <- smoothingMultiplier * smoothingMultiple
-    }
-
-    # Return a dataframe of results after all iterations or early
-    # termination
-    resultDF <- data.frame(smoothingMultipliers = results$smoothingMultiplierList,
-        umiThresholds = results$umiThresholdList, silhouetteScores = results$silhouetteList)
-
-    if (is.null(best_umi_threshold)) {
-        log_info("Unable to find good initialization. Returning Empty Bounds")
-        best_bounds <- list(bounds_empty = data.frame(umi_lower_bound = NA,
-            umi_upper_bound = NA, intronic_lower_bound = NA, intronic_upper_bound = NA),
-            bounds_non_empty = data.frame(umi_lower_bound = NA, umi_upper_bound = NA,
-                intronic_lower_bound = NA, intronic_upper_bound = NA))
-        result <- list(best_silhouette = NA, best_umi_threshold = NA,
-            bounds_empty = best_bounds$bounds_empty,
-            bounds_non_empty = best_bounds$bounds_non_empty,
-            resultDF = resultDF, numEmpty = NA, numNonEmpty = NA)
-        return(result)
-    }
-
-    log_info("Best silhouette score: [", round(best_silhouette, 3), "] at UMI threshold [",
-        round(best_umi_threshold, 2), "]")
-
-    result <- list(best_silhouette = best_silhouette,
-        best_umi_threshold = best_umi_threshold,
-        bounds_empty = best_bounds$bounds_empty,
-        bounds_non_empty = best_bounds$bounds_non_empty,
-        resultDF = resultDF)
-
-    # add the number of selected nuclei and empties for the best
-    # bounds.
-    cell_features_labeled <- labelTrainingData(df_filtered, result$bounds_empty,
-        result$bounds_non_empty, maxContaminationThreshold = NULL,
-        useCellBenderFeatures = FALSE, verbose = FALSE)
-
-    result$numEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
-        !cell_features_labeled$training_label_is_cell)
-    result$numNonEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
-        cell_features_labeled$training_label_is_cell)
-
-    return(result)
-}
-
 #' Calculate the silhouette score for a clustering of cells.
 #'
 #' @param cell_features_labeled must include a column named
@@ -957,60 +590,6 @@ getBoundsByDensity <- function(x, probList, pctDensity, maxPeaksExpected = 1,
     }
 }
 
-# if there are multiple peaks, only keep the largest peak.
-getEmptyCellsByDensity <- function(cell_features, yAxisFeature = "pct_intronic",
-    pctDensity = 75, showPlot = FALSE, verbose = FALSE) {
-    probList <- unique(c(25, 50, 75, 90, 95, 99, pctDensity))
-    probList <- probList[probList <= pctDensity]
-
-    # do this by density.  It's fully expected this distribution is
-    # bimodal (empty/nuclei.)
-    x <- log10(cell_features$num_transcripts + 1)
-    zHDR <- getBoundsByDensity(x, probList = probList, pctDensity = pctDensity,
-        maxPeaksExpected = 2, showPlot = showPlot)
-
-    # which interval contains the majority of the data?  Step 1:
-    # Split zHDR into pairs of intervals
-    zHDR_intervals <- matrix(zHDR$intervals, ncol = 2, byrow = TRUE)
-
-    # copied from the internals of hdrcde::hdr.den we use the same
-    # bandwidth as used in getBoundsByDensity.
-    d <- density(x, bw = zHDR$bw, n = 1001)
-    maxDensityX <- d$x[which.max(d$y)]
-
-    # Step 2: Calculate the fraction of scores in X within each
-    # interval
-    containsInterval <- function(interval, maxDensityX) {
-        return(maxDensityX >= interval[1] & maxDensityX <= interval[2])
-    }
-
-    # Step 3: Identify the interval with the highest density
-    max_idx <- which(apply(zHDR_intervals, 1, containsInterval, maxDensityX))
-    # this step can fail when the initial cutpoint is poor.
-    if (length(max_idx) == 0) {
-        if (verbose) {
-            msg<-paste("Unable to select the empty cell barcode highest",
-            "density interval.")
-            log_warn(msg)
-        }
-        return(NULL)
-    }
-    umiBounds <- zHDR_intervals[max_idx, ]
-
-    # select data from this interval and find the %intronic.
-    df <- cell_features[log10(cell_features$num_transcripts) >= umiBounds[1] &
-        log10(cell_features$num_transcripts) <= umiBounds[2], ]
-    pctDensity <- 95
-    probList <- unique(c(25, 50, 75, 90, 95, 99, pctDensity))
-    probList <- probList[probList <= pctDensity]
-    yBounds <- getBoundsByDensity(df[[yAxisFeature]], probList, pctDensity,
-        maxPeaksExpected = 1, showPlot = showPlot)$intervals
-
-    result <- data.frame(umi_lower_bound = umiBounds[1],
-        umi_upper_bound = umiBounds[2], intronic_lower_bound = yBounds[1],
-        intronic_upper_bound = yBounds[2])
-    return(result)
-}
 
 
 selectNucleiExemplarBounds <- function(cell_features,
