@@ -1,3 +1,198 @@
+####################
+# HIGH LEVEL BOUNDS FUNCTIONS
+#####################
+#' Find exemplars for nuclei and empty droplets
+#'
+#' @param cell_features The cell features data frame
+#' @param max_umis_empty Exclude cell barcodes from analysis with fewer than
+#'   these many UMIs.  This threshold should exclude noisy barcodes, but not
+#'   exclude the empty droplet cloud.
+#' @param useCellBenderFeatures When true, the CellBender remove-background
+#'   feature frac_contamination is used for cell selection.
+#' @param forceTwoClusterSolution When true, the function will attempt to find a
+#'   solution with two clusters.  This may be useful when the data is overloaded
+#'   and breaks the normal assumptions, but may find suboptimal solutions for
+#'   other data sets.
+#' @param verbose Print verbose output to log
+#' @return A list containing the bounds for the empty droplet and nuclei
+#'   exemplars
+#' @import logger
+#' @noRd
+findTrainingDataBounds <- function(cell_features, max_umis_empty = 50,
+    useCellBenderFeatures = TRUE, forceTwoClusterSolution = FALSE,
+    verbose = FALSE) {
+
+    # If using CellBender features, use the specific CBRB method.
+    if (useCellBenderFeatures) {
+        return(findTrainingDataBoundsCBRB(cell_features,
+            max_umis_empty = max_umis_empty))
+
+    }
+
+    # A lower UMI threshold is used for some cases.
+    max_umis_empty_off <- 20
+
+    # If forcing a two-cluster solution, try to find separation between the two
+    # highest peaks.
+    if (forceTwoClusterSolution) {
+        return(findTwoClusterSolution(cell_features, max_umis_empty,
+            max_umis_empty_off, verbose))
+    } else {
+        # Otherwise, use a more general approach with empty droplet fraction
+        # constraints.
+        return(findDefaultSolution(cell_features, max_umis_empty,
+            max_umis_empty_off, verbose))
+    }
+}
+
+findTwoClusterSolution <- function(cell_features, max_umis_empty,
+    max_umis_empty_off, verbose) {
+    # With the default UMI filter, look for the separation between the two
+    # highest peaks.
+    logSelectionProcess("Separate Two Highest Peaks", max_umis_empty, verbose)
+    defaultPitBetween <- findTrainingDataBoundsDefaultIterative(
+        cell_features, max_umis_empty = max_umis_empty,
+        method = "PitBetweenHighestPeaks", verbose = verbose)
+
+    # Without a UMI filter, this method works better in high-noise experiments.
+    logSelectionProcess("Separate Two Highest Peaks No Filter",
+    max_umis_empty_off, verbose)
+
+    noUmiFilterPitBetween <- findTrainingDataBoundsDefaultIterative(
+        cell_features, max_umis_empty = max_umis_empty_off,
+        method = "PitBetweenHighestPeaks", verbose = verbose)
+
+    results <- list(`Separate Two Highest Peaks` = defaultPitBetween,
+        `Separate Two Highest Peaks No Filter` = noUmiFilterPitBetween)
+
+    # In forced two-cluster solutions, do not enforce a minimum fraction of
+    # empty droplets.
+    return(selectBestTrainingBoundsModel(results))
+}
+
+findDefaultSolution <- function(cell_features, max_umis_empty,
+    max_umis_empty_off, verbose) {
+
+    # The default approach finds the pit after the highest peak.
+    logSelectionProcess("Pit After Highest Peak", max_umis_empty, verbose)
+    default <- findTrainingDataBoundsDefaultIterative(
+        cell_features, max_umis_empty = max_umis_empty, verbose = verbose)
+
+    # Without a UMI filter, this is useful for low-noise experiments.
+    logSelectionProcess("Pit After Highest Peak No Filter",
+        max_umis_empty_off, verbose)
+
+    noUmiFilter <- findTrainingDataBoundsDefaultIterative(
+        cell_features, max_umis_empty = max_umis_empty_off, verbose = verbose)
+
+    results <- list(`Default Selection` = default,
+        `No UMI Filter Selection` = noUmiFilter)
+
+    # If not forcing a two-cluster model, enforce a minimum fraction of empty
+    # droplets!
+    return(selectBestTrainingBoundsModel(results,
+        minEmptyDropletFraction = 0.2))
+}
+
+logSelectionProcess <- function(method, umi_filter, verbose) {
+    # Logs the current method and the UMI threshold being used.
+    msg <- paste("Exemplar selection [",
+        method, "] with UMI filter [", umi_filter, "]")
+
+    log_info(msg)
+}
+
+#' Select the best model from a list
+#'
+#' This function selects the best model from a list of results.  If the minimum
+#' empty droplet fraction is set, it will only consider models that have a
+#' minimum fraction of empty droplets. If no models meet the minimum empty
+#' droplet fraction, it will select the best model from the original list.
+#'
+#' @param results A list of results from findTrainingDataBoundsDefaultIterative
+#' @param minEmptyDropletFraction The minimum fraction of empty droplets that
+#'   must be present in the training data.
+#' @return The best model from the list
+#' @import logger
+#' @noRd
+selectBestTrainingBoundsModel <- function(results,
+    minEmptyDropletFraction = NULL) {
+
+    # To make bioconductor happy use vapply.
+    silhouettes <-
+        vapply(results, function(res) res$best_silhouette, numeric(1))
+    numEmpty <- vapply(results, function(res) res$numEmpty, numeric(1))
+    numNonEmpty <- vapply(results, function(res) res$numNonEmpty, numeric(1))
+
+    # the row names of the data frame are the model names.
+    df <- data.frame(silhouettes = silhouettes,
+        numEmpty = numEmpty,
+        numNonEmpty = numNonEmpty)
+
+    # remove NA silhouette results.  this explicitly ignores NAs, in
+    # cases where the model failed to find good bounds.
+    df <- df[!is.na(df$silhouettes), ]
+    best_name <- rownames(df[which.max(df$silhouettes), ])
+
+    # if maxEmptyDropletFraction is not null, drop any results that
+    # have a low number of empty droplets.
+    if (!is.null(minEmptyDropletFraction)) {
+        df <- df[df$numEmpty/df$numNonEmpty > minEmptyDropletFraction,]
+    }
+
+    # if there are results left with reasonable numbers of empty/non
+    # empties, keep the best silhouette score.  if there are no
+    # results left, keep the best silhouette score from the original
+    # list.
+    if (nrow(df) > 0) {
+        best_name <- rownames(df[which.max(df$silhouettes), ])
+    }
+
+    # Log the selected result
+    msg<-paste("Selected result [",best_name,"] with best silhouette score [",
+        round(max(silhouettes), 3), "]", sep = "")
+    log_info(msg)
+    # label the results that have the best initialization
+    result <- results[[best_name]]
+    result$method <- best_name
+    return(result)
+}
+
+
+#############################
+# SIMPLE CBRB
+#############################
+findTrainingDataBoundsCBRB <- function(cell_features, max_umis_empty = 50,
+    maxContaminationThreshold = 0.1) {
+    # the interval for empty cells for training data explicitly avoid
+    # searching in the very low UMI area, which are likely tons of
+    # PCR error barcodes.
+    cell_features_empty <- cell_features[cell_features$frac_contamination == 1 &
+        cell_features$num_transcripts > max_umis_empty, ]
+
+    bounds_empty <- getHighestDensityIntervalsEnforcedSmoothing(
+        cell_features_empty, pctDensity = 75)
+
+    # the intervals for nuclei examples
+    b <- selectNucleiExemplarBounds(cell_features, maxContaminationThreshold,
+        max_umis_empty = max_umis_empty, initialDensity = 95,
+        bounds_empty = bounds_empty, extendCellSelectionBounds = TRUE)
+
+    bounds_non_empty <- b$bounds_non_empty
+    bounds_non_empty_extended <- b$bounds_non_empty_extended
+
+    result <- list(bounds_empty = bounds_empty,
+        bounds_non_empty = bounds_non_empty_extended)
+
+    return(result)
+}
+
+
+
+################################
+# BOUNDS DISCOVERY WTIHOUT CBRB
+#################################
+
 #' Find the training data bounds using an iterative approach
 #'
 #' This replaces findTrainingDataBoundsDefault with an iterative approach to
@@ -35,19 +230,15 @@ findTrainingDataBoundsDefaultIterative <- function(cell_features,
     method = c("PitAfterHighestPeak", "PitBetweenHighestPeaks"),
     smoothingMultiple = 1.1, max_iterations = 10,
     early_termination_threshold = 0.05, verbose = TRUE) {
-
     method <- match.arg(method)
     log_info("Starting iterative smoothing with method [", method, "]")
-    # Filter valid cell barcodes
-    df_filtered <- cell_features[cell_features$num_transcripts >= max_umis_empty, ]
+    df_filtered <-
+        cell_features[cell_features$num_transcripts >= max_umis_empty, ]
     x <- log10(df_filtered$num_transcripts + 1)
-    # Initialize tracking variables
-    best_silhouette <- -Inf
+    best_silhouette <- -Inf; smoothingMultiplier <- 1
     best_bounds <- best_umi_threshold <- NULL
-    smoothingMultiplier <- 1
     results <- data.frame(smoothingMultiplier = numeric(0),
         umiThreshold = numeric(0), silhouetteScore = numeric(0))
-    # Iterative process to optimize smoothing and UMI threshold
     for (iter in seq_len(max_iterations)) {
         denRange <- seq(0.25, 3, 0.25)^smoothingMultiplier
         umiThreshold <- determineUMIThreshold(x, method, denRange)
@@ -73,8 +264,10 @@ findTrainingDataBoundsDefaultIterative <- function(cell_features,
             best_bounds <- bounds
             best_umi_threshold <- umiThreshold
         }
-        if (!is.na(score) && score < (1 - early_termination_threshold) * best_silhouette) {
-            log_info("Early termination: silhouette score dropped significantly")
+        threshold<-(1 - early_termination_threshold) * best_silhouette
+        if (!is.na(score) && score < threshold) {
+            msg<-"Early termination: silhouette score dropped significantly"
+            log_info(msg)
             break
         }
         smoothingMultiplier <- smoothingMultiplier * smoothingMultiple
@@ -93,8 +286,8 @@ determineUMIThreshold <- function(x, method, denRange) {
     stop("Invalid method specified.")
 }
 
-finalizeTrainingResults <- function(df_filtered, best_silhouette, best_umi_threshold,
-                                    best_bounds, results) {
+finalizeTrainingResults <- function(df_filtered, best_silhouette,
+    best_umi_threshold, best_bounds, results) {
     if (is.null(best_umi_threshold)) {
         log_info("Unable to find good initialization. Returning Empty Bounds")
         return(list(best_silhouette = NA, best_umi_threshold = NA,
@@ -102,7 +295,8 @@ finalizeTrainingResults <- function(df_filtered, best_silhouette, best_umi_thres
             numEmpty = NA, numNonEmpty = NA))
     }
 
-    cell_features_labeled <- labelTrainingData(df_filtered, best_bounds$bounds_empty,
+    cell_features_labeled <-
+        labelTrainingData(df_filtered, best_bounds$bounds_empty,
         best_bounds$bounds_non_empty, NULL,
         useCellBenderFeatures = FALSE, verbose = FALSE)
 
@@ -111,9 +305,11 @@ finalizeTrainingResults <- function(df_filtered, best_silhouette, best_umi_thres
     numNonEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
         cell_features_labeled$training_label_is_cell)
 
-    return(list(best_silhouette = best_silhouette, best_umi_threshold = best_umi_threshold,
-                bounds_empty = best_bounds$bounds_empty, bounds_non_empty = best_bounds$bounds_non_empty,
-                resultDF = results, numEmpty = numEmpty, numNonEmpty = numNonEmpty))
+    return(list(best_silhouette = best_silhouette,
+        best_umi_threshold = best_umi_threshold,
+        bounds_empty = best_bounds$bounds_empty,
+        bounds_non_empty = best_bounds$bounds_non_empty,
+        resultDF = results, numEmpty = numEmpty, numNonEmpty = numNonEmpty))
 }
 
 ############
@@ -149,7 +345,8 @@ findTrainingDataBoundsDefault <- function(cell_features, max_umis_empty = 50,
     umiThreshold <- if (!is.null(umiThresholdOverride)) umiThresholdOverride
     else PitAfterHighestPeakWithGridSearch(log10(df$num_transcripts))
 
-    if (verbose) log_info("Initial UMI Threshold [", round(umiThreshold, 3), "]")
+    if (verbose)
+        log_info("Initial UMI Threshold [", round(umiThreshold, 3), "]")
 
     df_empty <- df[log10(df$num_transcripts) < umiThreshold, ]
     bounds_empty <- getEmptyCellsByDensity(df_empty, "pct_intronic",
@@ -159,23 +356,24 @@ findTrainingDataBoundsDefault <- function(cell_features, max_umis_empty = 50,
     if (!is.null(early_exit)) return(early_exit)
 
     df_non_empty <- df[log10(df$num_transcripts) > umiThreshold, ]
-    early_exit <- checkEarlyExit(df_non_empty, bounds_empty, umiThreshold, verbose)
+    early_exit <- checkEarlyExit(df_non_empty, bounds_empty,
+        umiThreshold, verbose)
     if (!is.null(early_exit)) return(early_exit)
 
     bounds_non_empty_intronic <- getHighestDensityIntervalsEnforcedSmoothing(
         df_non_empty, yAxisFeature = "pct_intronic", pctDensity = 75,
         maxPeaksExpected = 1, showPlot = FALSE
     )
-
     df_filtered <- df_non_empty[
-        df_non_empty$pct_intronic >= bounds_non_empty_intronic$intronic_lower_bound &
-        df_non_empty$pct_intronic <= bounds_non_empty_intronic$intronic_upper_bound,
-    ]
+        df_non_empty$pct_intronic >=
+            bounds_non_empty_intronic$intronic_lower_bound &
+        df_non_empty$pct_intronic <=
+            bounds_non_empty_intronic$intronic_upper_bound,]
 
     bounds_non_empty_transcripts <- getHighestDensityIntervalsEnforcedSmoothing(
-        df_filtered, yAxisFeature = "num_transcripts", pctDensity = 75, showPlot = FALSE
+        df_filtered, yAxisFeature = "num_transcripts",
+        pctDensity = 75, showPlot = FALSE
     )
-
     bounds_non_empty_transcripts$umi_upper_bound <-
         as.numeric(stats::quantile(log10(df_filtered$num_transcripts), 0.995))
 
@@ -186,7 +384,8 @@ findTrainingDataBoundsDefault <- function(cell_features, max_umis_empty = 50,
         intronic_upper_bound = bounds_non_empty_intronic$intronic_upper_bound
     )
 
-    return(list(bounds_empty = bounds_empty, bounds_non_empty = bounds_non_empty))
+    return(list(bounds_empty = bounds_empty,
+        bounds_non_empty = bounds_non_empty))
 }
 
 checkEarlyExit <- function(df, bounds_empty, umiThreshold, verbose) {

@@ -45,13 +45,11 @@ parseH5ad <- function(h5ad_file, expression_matrix_path = "X",
     gene_id_path = "/var/ensembl_ids",
     cell_id_path = "/obs/CellID") {
 
-    if (!file.exists(h5ad_file)) {
+    if (!file.exists(h5ad_file))
         stop("The file [", h5ad_file, "] does not exist.")
-    }
 
     # Detect if the file is gzipped
     is_gzipped <- grepl("\\.gz$", h5ad_file)
-
     # If gzipped, decompress to a temporary file
     if (is_gzipped) {
         temp_file <- tempfile(fileext = ".h5ad")
@@ -68,7 +66,6 @@ parseH5ad <- function(h5ad_file, expression_matrix_path = "X",
         expr_data$csr_indices, expr_data$csr_indptr,
         length(metadata$ensembl_ids), length(metadata$cell_names)
     )
-
     # Create the sparse matrix
     sparse_matrix <- sparseMatrix(
         i = orientation$row_indices,
@@ -76,19 +73,15 @@ parseH5ad <- function(h5ad_file, expression_matrix_path = "X",
         x = expr_data$csr_data,
         dims = c(orientation$matrix_rows, orientation$matrix_cols)
     )
-
     # Transpose if needed
     if (orientation$transpose_needed) {
         sparse_matrix <- t(sparse_matrix)
     }
-
     # Assign row and column names
     rownames(sparse_matrix) <- metadata$ensembl_ids
     colnames(sparse_matrix) <- metadata$cell_names
-
     # Load cell features
     obs_df <- load_h5ad_obs(h5ad_file)
-
     # Clean up temporary file if decompressed
     if (is_gzipped) {
         unlink(temp_file)

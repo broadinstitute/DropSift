@@ -1,5 +1,5 @@
 ---
-title: "Nuclei Selection with DropSift"
+title: "Nucleus Selection with DropSift"
 author: 
  - "James Nemesh"
  - "Alec Wysoker"
@@ -10,7 +10,7 @@ output:
         toc_depth: 3  # (Optional) Controls depth of headers included in TOC
 css: "custom.css"
 vignette: >
-  %\VignetteIndexEntry{Nuclei Selection with DropSift}
+  %\VignetteIndexEntry{Nucleus Selection with DropSift}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -26,7 +26,7 @@ library(logger)
 library(DropSift)
 
 logger::log_threshold(level=logger::INFO)   # Ensure INFO logs are captured
-logger::log_appender(logger::appender_stdout)                # Redirect logs to R Markdown output
+logger::log_appender(logger::appender_stdout) # Redirect logs to R Markdown 
 ```
 
 # Quickstart
@@ -47,7 +47,8 @@ statistics (column name in parenthesis)
 data(svmNucleusCallerInputs)
 dropColumns <- c("num_transcripts", "num_reads", "frac_contamination")
 cell_features <- svmNucleusCallerInputs$
-    cellFeatures[, setdiff(colnames(svmNucleusCallerInputs$cellFeatures), dropColumns)]
+    cellFeatures[, setdiff(colnames(svmNucleusCallerInputs$cellFeatures), 
+    dropColumns)]
 ```
     
 <style>
@@ -69,7 +70,8 @@ The DGE matrix contains raw UMI counts for each gene (rows) across cell barcodes
 (columns). It should be supplied as either:
 
 - A dense matrix (tab delimited text)
-- A sparse matrix in 10x Genomics MTX format (matrix.mtx.gz with barcodes.tsv.gz and features.tsv.gz)
+- A sparse matrix in 10x Genomics MTX format 
+(matrix.mtx.gz with barcodes.tsv.gz and features.tsv.gz)
 
 ```{r, eval=TRUE, echo=FALSE}
 dgeMatrix=svmNucleusCallerInputs$dgeMatrix
@@ -97,15 +99,15 @@ Cell Barcodes selected as nuclei can be accessed from the `cell_features` data
 frame.
 
 ```{r, eval=TRUE, include=TRUE}
-cf=svmNucleusCaller$cell_features
-nuclei = cf[cf$is_cell==TRUE,]
+cf <- svmNucleusCaller$cell_features
+nuclei <- cf[cf$is_cell==TRUE,]
 ```
 
 
 ```{r, echo=FALSE}
 # Display first few rows of the data frame
 df <- head(nuclei)
-rownames(df)=NULL
+rownames(df) <- NULL
 
 # Create a simple table
 kable(df, format = "html")
@@ -133,7 +135,8 @@ svmNucleusCaller = SvmNucleusCaller(
 See the [Running DropSift](#running-dropsift) section for more details on how to
 run DropSift with your own data.
 
-Data used in this vignette is from a single sequencing reaction from the [BICAN](https://assets.nemoarchive.org/col-npe62xg) project.  Citation:
+Data used in this vignette is from a single sequencing reaction from the 
+[BICAN](https://assets.nemoarchive.org/col-npe62xg) project.  Citation:
 
     Kathleen Kim, Lauren Macaisa, Sadie Drouin, Nirmala Rayan, Curtis Mello,
     Nafiseh Yavari, Olivia Yoo, Alec Wysoker, Khalid Shakir, Jim Nemesh, Seva
@@ -155,9 +158,12 @@ of Nuclei Selection
 
 Nuclei differ from whole cells in several ways:
 
--   They tend to have fewer captured UMIs, making it harder to distinguish them from background signal.
--   The relative proportion of ambient RNA is higher, leading to potential contamination.
--   The process of nucleus isolation from tissue can introduce debris, further complicating classification.
+-   They tend to have fewer captured UMIs, making it harder to distinguish 
+them from background signal.
+-   The relative proportion of ambient RNA is higher, leading to 
+potential contamination.
+-   The process of nucleus isolation from tissue can introduce debris, 
+further complicating classification.
 
 ## EmptyDrops and Barcode Rank Plots
 
@@ -168,8 +174,8 @@ been implemented in both the DropletUtils package and has been modified by 10x
 genomics.
 
 EmptyDrops (and other methods) visualize the distribution of UMI counts as a
-[barcode rank
-plot](https://rdrr.io/github/MarioniLab/DropletUtils/man/barcodeRanks.html), to
+[barcode rank plot]
+(https://rdrr.io/github/MarioniLab/DropletUtils/man/barcodeRanks.html), to
 initialize the algorithm to initialize where a threshold where empty droplets
 should confidently be encountered. In single-cell data, the transition between
 nuclei and empty droplets can be sharp, but nuclei's lower UMI counts and higher
@@ -201,9 +207,12 @@ knitr::include_graphics("./images/nucleiExperimentStructure.png")
 
 This visualization contains 3 main classes:
 
--   empty droplets are the highest center of density due to poisson loading of beads
--   nuclei are the second highest center of density, and have a higher proportion of intronic reads
--   debris are cell barcodes that have a much lower proportion of intronic reads, and tend to be smaller on average than nuclei.
+-   empty droplets are the highest center of density due to poisson loading 
+of beads
+-   nuclei are the second highest center of density, and have a higher 
+proportion of intronic reads
+-   debris are cell barcodes that have a much lower proportion of intronic 
+reads, and tend to be smaller on average than nuclei.
 
 The barcode rank visualization obscures the structure of the data, especially
 the debris class. Debris tends to occur mostly in the intermediate UMI range,
@@ -211,7 +220,8 @@ which can make the cumulative distribution plot difficult to interpret.
 
 While our lab has been visualizing data this way for quite some time, we're
 happy that other groups have also leveraged the same concept.
-[DropletQC](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02547-0)
+[DropletQC]
+(https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02547-0)
 is a software package that uses the same metrics to help identify empty droplets
 and damaged nuceli. The visualization below is from the DropletQC manuscript.
 
@@ -252,13 +262,15 @@ droplets, which can obscure the true expression of the cells.
 
 ```{r, echo = FALSE, out.width="50%", out.height="50%", fig.align="center"}
 knitr::include_graphics("./images/Neuronal_ambient_RNA_contamination.jpg")
+#things you do to satisfy the 80 character limit...
+cellbender_url<-paste0("https://cellbender.readthedocs.io/en/latest/usage/",
+    "index.html#proposed-pipeline")
 ```
 
 Remove background visualizes its initialization somewhat similarly to EmptyDrops
 - the initialization algorithm is more complex and in practice seems more
 robust, but can suffer from the same initialization issues. From their fine
-[documentation]
-(https://cellbender.readthedocs.io/en/latest/usage/index.html#proposed-pipeline):
+[documentation](`r cellbender_url`):
 
 > If you have a dataset with so much background RNA that you cannot identify the
 “empty droplet plateau” yourself by eye, then remove-background will also likely
@@ -302,8 +314,10 @@ DropSift is a method designed to distinguish nuclei from empty droplets using a
 support vector machine (SVM) classifier. It incorporates:
 
 -   Cell-level summary metrics, including UMI counts and % intronic.
--   Expression-based features, informed by differential expression between nuclei and empty droplets.
--   CellBender outputs (optional), which estimate ambient RNA contamination and further refine nucleus selection.
+-   Expression-based features, informed by differential expression between 
+nuclei and empty droplets.
+-   CellBender outputs (optional), which estimate ambient RNA contamination 
+and further refine nucleus selection.
 
 By integrating multiple signals, DropSift effectively differentiates nuclei from
 empty droplets while adapting to the variability in data structure—such as
@@ -328,10 +342,14 @@ accuracy.
 DropSift follows a structured workflow to classify nuclei and empty droplets
 using an SVM-based approach. The key steps are:
 
-1.  Identifying Exemplars: Selects high-confidence nuclei and empty droplets as training examples.
-2.  Feature Extraction: Computes key metrics (UMI count, % intronic, CellBender contamination, empty gene module score) for classification.
-3.  Training the SVM Classifier: Learns a dataset-specific decision boundary based on the selected exemplars.
-4.  Classifying Remaining Barcodes: Applies the trained classifier to assign nuclei and empty droplets to all remaining barcodes.
+1.  Identifying Exemplars: Selects high-confidence nuclei and empty droplets 
+as training examples.
+2.  Feature Extraction: Computes key metrics (UMI count, % intronic, CellBender
+contamination, empty gene module score) for classification.
+3.  Training the SVM Classifier: Learns a dataset-specific decision boundary 
+based on the selected exemplars.
+4.  Classifying Remaining Barcodes: Applies the trained classifier to assign 
+nuclei and empty droplets to all remaining barcodes.
 
 ## Identifying Exemplars
 
@@ -359,8 +377,13 @@ for different percentages of the data.
 knitr::include_graphics("./images/HighestDensityRegionSelection.png")
 ```
 
--   Empty exemplars are selected by calculating the highest density region (HDR) for cell barcodes that have had all of their UMIs removed by remove background. The cell barcodes in the region that contains 75% of the data centered around the highest density are selected.
--   Nuclei exemplars are selected by the same HDR method for cell barcodes that have had less than 10% of their UMIs filtered by remove background, selecting the region of density containing 95% of those barcodes.
+-   Empty exemplars are selected by calculating the highest density region 
+(HDR) for cell barcodes that have had all of their UMIs removed by remove 
+background. The cell barcodes in the region that contains 75% of the data 
+centered around the highest density are selected.
+-   Nuclei exemplars are selected by the same HDR method for cell barcodes that
+have had less than 10% of their UMIs filtered by remove background, selecting 
+the region of density containing 95% of those barcodes.
 
 This results in the following exemplar selection, where exemplar empty droplets
 are contained in the red bounds, and exemplar nuclei are contained in the green
@@ -447,7 +470,8 @@ s = \frac{b - a}{\max(a, b)}
 $$
 
 where:\
-- $a$ is the mean distance between a point and other points in the same cluster.\
+- $a$ is the mean distance between a point and other points 
+in the same cluster.\
 - $b$ is the mean distance between a point and the closest neighboring cluster.
 
 <br />
@@ -500,9 +524,13 @@ knitr::include_graphics("./images/FeatureViolinPlot.png")
 
 To ensure features contribute effectively to classification:
 
--   Large-scale features (e.g., transcript counts) are log-transformed to reduce skew.
--   All features are standardized to follow a mean-zero, unit-variance distribution, preventing any single feature from dominating the model.
--   While most features are well-separated between nuclei and empty droplets, some may have overlapping distributions, reinforcing the need for a multi-feature classification approach.
+-   Large-scale features (e.g., transcript counts) are log-transformed 
+to reduce skew.
+-   All features are standardized to follow a mean-zero, unit-variance 
+distribution, preventing any single feature from dominating the model.
+-   While most features are well-separated between nuclei and empty droplets, 
+some may have overlapping distributions, reinforcing the need for a 
+multi-feature classification approach.
 
 With these processed features, the next step is training the support vector
 machine (SVM) to classify nuclei.
@@ -613,8 +641,11 @@ gene expression matrix.
 
 Typical input data sources:
 
--   The Optimus Pipeline emits an5had file contains the necessary information, and can be directly processed.
--   A 10x Genomics CellRanger processed data set has a BAM file that can be processed to extract summary metrics, and a digital gene expression matrix in MTX format.
+-   The Optimus Pipeline emits an5had file contains the necessary information, 
+and can be directly processed.
+-   A 10x Genomics CellRanger processed data set has a BAM file that can be 
+processed to extract summary metrics, and a digital gene expression matrix 
+in MTX format.
 
 We'll load up a prepared data set to demonstrate how DropSift works.
 
@@ -623,11 +654,17 @@ data(svmNucleusCallerInputs)
 ```
 
 ## DGE Matrix
+```{r, echo = FALSE}
+#things you do to satisfy the 80 character limit...
+sparse_matrix_url<-paste0("https://www.rdocumentation.org/packages/Matrix/",
+    "versions/1.7-1/topics/CsparseMatrix-class")
+```
 
 The digital gene expression matrix contains the raw UMI counts for each gene in
 each barcode. The matrix has genes in rows and cell barcodes in columns, and can
 either be a dense matrix or a sparse matrix in [column compressed
-format](https://www.rdocumentation.org/packages/Matrix/versions/1.7-1/topics/CsparseMatrix-class).
+format](`r sparse_matrix_url`).
+
 The Seurat package will parse MTX files into the appropriate sparse format via
 [Read10X](https://satijalab.org/seurat/reference/read10x)
 
@@ -639,7 +676,9 @@ print (svmNucleusCallerInputs$dgeMatrix[1:5,1:3])
 
 The cell-level feature matrix contains summary metrics for each cell barcode:
 
--   num_reads: The number of uniquely mapped sequencing reads assigned to each barcode (optional, will be used to calculate reads/UMI as a measure of sequencing saturation in selected nuclei if included)
+-   num_reads: The number of uniquely mapped sequencing reads assigned to each
+barcode (optional, will be used to calculate reads/UMI as a measure of 
+sequencing saturation in selected nuclei if included)
 -   pct_intronic: The percentage of reads that map to intronic regions.
 -   pct_mt: The percentage of reads that map to mitochondrial genes.
 -   frac_contamination: The fraction of UMIs removed by CellBender (optional).
@@ -661,11 +700,18 @@ kable(df, format = "html")
 ```
 
 ## Preparing Cell Level Features
+```{r, echo = FALSE}
+#things you do to satisfy the 80 character limit...
+refseq_url<-paste0("https://genome.ucsc.edu/cgi-bin/hgTables?",
+    "hgsid=1220235277_SJWvNhqI4wCU4FbY6LcxOLoaaC5l&hgta_doSchemaDb=",
+    "macFas5&hgta_doSchemaTable=refFlat")
+gatk_url<-paste0("https://gatk.broadinstitute.org/hc/en-us/articles/",
+    "360037057492-CollectRnaSeqMetrics-Picard")
+```
 
 If you aren't running the Optimus Pipeline, you'll need to gather the cell-level
 features yourself. The cell-level features can be calculated from your BAM file
-plus an annotations file that is in
-[REFSEQ](https://genome.ucsc.edu/cgi-bin/hgTables?hgsid=1220235277_SJWvNhqI4wCU4FbY6LcxOLoaaC5l&hgta_doSchemaDb=macFas5&hgta_doSchemaTable=refFlat)
+plus an annotations file that is in [REFSEQ](`r refseq_url`)
 or [GTF](http://useast.ensembl.org/info/website/upload/gff.html) format.  This
 annotations file should be the same one you used to generate the digital gene
 expression matrix.
@@ -674,7 +720,7 @@ expression matrix.
 The [DropSeq](https://github.com/broadinstitute/Drop-seq/tree/master) software
 package provides tools to gather these metrics.
 `SingleCellRnaSeqMetricsCollector` is an adaptation of the Picard tool
-[CollectRnaSeqMetrics](https://gatk.broadinstitute.org/hc/en-us/articles/360037057492-CollectRnaSeqMetrics-Picard).
+[CollectRnaSeqMetrics](`r gatk_url`).
 
 From the fine documentation:
 
@@ -761,8 +807,9 @@ downsampled to 10% of the cell barcodes present in the original experiment.
 
 ```{r, eval=TRUE, include=TRUE}
 dropColumns <- c("num_transcripts", "num_reads", "frac_contamination")
-cell_features <- svmNucleusCallerInputs$
-    cellFeatures[, setdiff(colnames(svmNucleusCallerInputs$cellFeatures), dropColumns)]
+cell_features <- svmNucleusCallerInputs$cellFeatures[
+    , setdiff(colnames(svmNucleusCallerInputs$cellFeatures), dropColumns)
+]
 ```
 
 
@@ -842,8 +889,10 @@ mode.
 
 The classifier also returns a number of plots, which are grouped into lists:
 - `plots` list contains initialization and selection plots
-- `featurePlot` is a single plot containing the distribution of features in the exemplar nuclei and empty droplets
-- `geneModulePlots` list contains plots of the empty gene module score in the training data and in the full dataset.
+- `featurePlot` is a single plot containing the distribution of features in 
+the exemplar nuclei and empty droplets
+- `geneModulePlots` list contains plots of the empty gene module score in the 
+training data and in the full dataset.
 
 If you'd like a nicely formatted PDF report that incorporates these plots, you
 can use the `plotSvmNucleusCaller` function.  This function generates a
@@ -984,7 +1033,12 @@ following (assuming you have installed this package and it's on your R_LIBS
 path):
 
 ```         
-Rscript -e 'DropSift::runIntronicSVM(datasetName="test", optimusH5File="/path/to/my.h5ad", outPDF="/path/to/output.pdf", outFeaturesFile="/path/to/output_report.txt")'
+Rscript -e 'DropSift::runIntronicSVM(
+datasetName="test", 
+optimusH5File="/path/to/my.h5ad", 
+outPDF="/path/to/output.pdf", 
+outFeaturesFile="/path/to/output_report.txt"
+)'
 ```
 
 This method also supports supplying a DGE file in dense format or sparse 10x
@@ -996,7 +1050,13 @@ in the unfiltred DGE matrix found in `raw_feature_bc_matrix`.
 
 
 ```
-Rscript -e 'DropSift::runIntronicSVM(datasetName="test", cellFeaturesFile="/path/to/my.cell_features.txt", dgeMatrixFile="/path/to/dge", outPDF="/path/to/output.pdf", outFeaturesFile="/path/to/output_report.txt")'
+Rscript -e 'DropSift::runIntronicSVM(
+datasetName="test", 
+cellFeaturesFile="/path/to/my.cell_features.txt", 
+dgeMatrixFile="/path/to/dge", 
+outPDF="/path/to/output.pdf", 
+outFeaturesFile="/path/to/output_report.txt"
+)'
 ```
 
 # Session Information

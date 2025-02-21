@@ -19,8 +19,8 @@
 # NucleiCaller S3 class definition
 
 # constructor, only used internally
-new_SvmNucleusCaller <- function(results, cellProbabilityThreshold, maxUmisEmpty,
-    forceTwoClusterSolution) {
+new_SvmNucleusCaller <- function(results, cellProbabilityThreshold,
+    maxUmisEmpty, forceTwoClusterSolution) {
     stopifnot(is.list(results))
     results$cellProbabilityThreshold <- cellProbabilityThreshold
     results$maxUmisEmpty <- maxUmisEmpty
@@ -86,13 +86,16 @@ contaminationColName <- "frac_contamination"
 #' # View summary
 #' print(svmNucleusCaller)
 
-SvmNucleusCaller <- function(cellFeatures, dgeMatrix, cellProbabilityThreshold = NULL,
-    maxUmisEmpty = 50, featureColumns = NULL, forceTwoClusterSolution = FALSE,
-    useCBRBFeatures = TRUE, datasetName = "") {
+SvmNucleusCaller <- function(cellFeatures, dgeMatrix,
+    cellProbabilityThreshold = NULL, maxUmisEmpty = 50, featureColumns = NULL,
+    forceTwoClusterSolution = FALSE, useCBRBFeatures = TRUE, datasetName = "") {
+
     stopifnot(is.data.frame(cellFeatures))
     stopifnot(is.null(dgeMatrix) || is.matrix(dgeMatrix) || is(dgeMatrix,
         "sparseMatrix"))
-    stopifnot(is.null(cellProbabilityThreshold) || is.numeric(cellProbabilityThreshold))
+    stopifnot(is.null(cellProbabilityThreshold) ||
+        is.numeric(cellProbabilityThreshold))
+
     stopifnot(is.numeric(maxUmisEmpty))
     stopifnot(is.logical(forceTwoClusterSolution))
     stopifnot(is.character(datasetName))
@@ -100,21 +103,30 @@ SvmNucleusCaller <- function(cellFeatures, dgeMatrix, cellProbabilityThreshold =
 
     # optionally enhance the cell features data frame with additional
     # columns if they are missing and can be computed.
-    cellFeatures <- enhanceCelLFeatures(cellFeatures, dgeMatrix, useCBRBFeatures)
+    cellFeatures <- enhanceCelLFeatures(cellFeatures,
+        dgeMatrix, useCBRBFeatures)
+
     featureColumns <- configureFeatureColumns(featureColumns, useCBRBFeatures,
         dgeMatrix)
     stopifnot(is.character(featureColumns))
     validateCellFeatures(cellFeatures, featureColumns)
-    if (contaminationColName %in% featureColumns && !all(cbrbNonSvmColNames %in%
-        colnames(cellFeatures))) {
-        warning(sprintf("If using CBRB features and column %s is not in cellFeatures, plotting will fail.",
+    if (contaminationColName %in% featureColumns &&
+        !all(cbrbNonSvmColNames %in% colnames(cellFeatures))) {
+
+        warning(sprintf("If using CBRB features and column %s is not in ",
+            "cellFeatures, plotting will fail.",
             paste(cbrbNonSvmColNames, collapse = ", ")))
     }
-    results <- callByIntronicSVM(dataset_name = datasetName, cell_features = cellFeatures,
-        dgeMatrix = dgeMatrix, cellProbabilityThreshold = cellProbabilityThreshold,
-        max_umis_empty = maxUmisEmpty, features = featureColumns, forceTwoClusterSolution = forceTwoClusterSolution)
-    results$cell_features <- data.frame(cell_barcode = rownames(results$cell_features),
-        results$cell_features)
+    results <- callByIntronicSVM(dataset_name = datasetName,
+        cell_features = cellFeatures, dgeMatrix = dgeMatrix,
+        cellProbabilityThreshold = cellProbabilityThreshold,
+        max_umis_empty = maxUmisEmpty, features = featureColumns,
+        forceTwoClusterSolution = forceTwoClusterSolution)
+
+    results$cell_features <- data.frame(
+        cell_barcode = rownames(results$cell_features),
+        results$cell_features
+    )
     return(new_SvmNucleusCaller(results, cellProbabilityThreshold, maxUmisEmpty,
         forceTwoClusterSolution))
 }
@@ -126,15 +138,21 @@ enhanceCelLFeatures <- function(cellFeatures, dgeMatrix, useCBRBFeatures) {
     # optionally add the num_transcripts column to the cell_features
     # data frame if missing.
     if (!"num_transcripts" %in% colnames(cellFeatures)) {
-        log_info("num_transcripts column not found in cell_features.  Computing from DGE matrix.")
+        log_info("num_transcripts column not found in cell_features.",
+            "Computing from DGE matrix.")
         cellFeatures$num_transcripts <- colSums(dgeMatrix)
     }
 
     # optionally approximate the num_retained_transcripts if missing
-    if (!"num_retained_transcripts" %in% colnames(cellFeatures) && useCBRBFeatures) {
-        log_info("frac_contamination found but num_retained_transcripts column not found in cell_features.  Approximating from num_transcripts and frac_contamination.")
-        cellFeatures$num_retained_transcripts <- round((1 - (cellFeatures$frac_contamination)) *
-            cellFeatures$num_transcripts)
+    if (!"num_retained_transcripts" %in% colnames(cellFeatures)
+        && useCBRBFeatures) {
+        log_info("frac_contamination found but num_retained_transcripts column",
+            "not found in cell_features.  Approximating from num_transcripts ",
+            "and frac_contamination.")
+        cellFeatures$num_retained_transcripts <- round(
+            (1 - cellFeatures$frac_contamination) * cellFeatures$num_transcripts
+        )
+
     }
     return(cellFeatures)
 }
@@ -143,10 +161,11 @@ validateCellFeatures <- function(cellFeatures, features) {
     requiredColumns <- setdiff(features, emptyGeneModuleScoreColName)
     requiredColumns <- c(requiredColumns, requiredNonSvmColNames)
     if (!is.null(requiredColumns)) {
-        missingColumns <- requiredColumns[!requiredColumns %in% colnames(cellFeatures)]
+        missingColumns <- r
+        equiredColumns[!requiredColumns %in% colnames(cellFeatures)]
         if (length(missingColumns) > 0) {
-            log_error("The cell features file is missing the following required columns: ",
-                paste(missingColumns, collapse = ", "))
+            log_error("The cell features file is missing the following",
+            "required columns: ", paste(missingColumns, collapse = ", "))
             stop()
         }
     }
@@ -201,7 +220,10 @@ plotSvmNucleusCaller <- function(svmNucleusCaller) {
 #'
 #' @inheritParams SvmNucleusCaller
 #' @noRd
-configureFeatureColumns <- function(featureColumns, useCBRBFeatures, dgeMatrix) {
+configureFeatureColumns <- function(featureColumns,
+    useCBRBFeatures,
+    dgeMatrix) {
+
     if (is.null(featureColumns)) {
         featureColumns <- DefaultFeatureColumns
         if (useCBRBFeatures) {
@@ -224,10 +246,13 @@ plotSvmNucleusCaller.SvmNucleusCaller <- function(svmNucleusCaller) {
     datasetName <- svmNucleusCaller$dataset_name
     if (contaminationColName %in% svmNucleusCaller$features) {
         arrangeSVMCellSelectionPlots(plots, geneModulePlots = geneModulePlots,
-            featurePlot = featurePlot, datasetName, outPDF = NULL, useOpenPDF = TRUE)
+            featurePlot = featurePlot, datasetName,
+            outPDF = NULL, useOpenPDF = TRUE)
     } else {
-        arrangeSVMCellSelectionPlotsNoCBRB(plots, geneModulePlots = geneModulePlots,
-            featurePlot = featurePlot, datasetName, outPDF = NULL, useOpenPDF = TRUE)
+        arrangeSVMCellSelectionPlotsNoCBRB(plots,
+            geneModulePlots = geneModulePlots,
+            featurePlot = featurePlot, datasetName,
+            outPDF = NULL, useOpenPDF = TRUE)
     }
     invisible(svmNucleusCaller)
 }
@@ -277,12 +302,13 @@ print.SvmNucleusCaller <- function(x, ...) {
         "\n")
     cat("Input cell features: ", nrow(svmNucleusCaller$cell_features),
         " cells\n")
-    cat("Number of cells selected: ", length(which(as.logical(svmNucleusCaller$cell_features$is_cell))),
-        "\n")
+    cat("Number of cells selected: ",
+        length(which(as.logical(svmNucleusCaller$cell_features$is_cell))),"\n")
     invisible(svmNucleusCaller)
 }
 
-#' Estimate CellBender remove-background arguments from an SvmNucleusCaller object
+#' Estimate CellBender remove-background arguments from an SvmNucleusCaller
+#' object
 #'
 #' After running the SVM with useCBRBFeatures=FALSE, get an estimate for
 #' --total-droplets-included and --expected-cells CellBender remove-background
@@ -323,9 +349,15 @@ getCBRBArgs.SvmNucleusCaller <- function(svmNucleusCaller) {
     df <- svmNucleusCaller$cell_features
     threshold_total_droplets <- round(mean(df[df$training_label_is_cell ==
         FALSE, ]$num_transcripts, na.rm = TRUE))
-    total_droplets_included <- length(which(df$num_transcripts > threshold_total_droplets))
+    total_droplets_included <-
+        length(which(df$num_transcripts > threshold_total_droplets))
+
     expected_cells <- length(which(df$is_cell == TRUE))
-    return(list(total_droplets_included = total_droplets_included, expected_cells = expected_cells))
+    return(list(
+        total_droplets_included = total_droplets_included,
+        expected_cells = expected_cells)
+    )
+
 }
 
 #' @export

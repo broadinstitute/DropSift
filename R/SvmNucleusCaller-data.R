@@ -21,7 +21,7 @@
 #' Example cell features and digital gene expression (DGE) matrix for testing
 #' the SVM nucleus caller. Data is from a single-nucleus RNA sequencing
 #' (snRNA-seq) experiment:
-#' **2023-08-25_v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1_dev_aug07_2024**.
+#' **2023-08-25_v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1**.
 #'
 #' @docType data
 #'
@@ -30,7 +30,8 @@
 #' @format A list with two elements:
 #' \describe{
 #'   \item{cellFeatures}{A data frame containing cell-level features.}
-#'   \item{dgeMatrix}{A sparse matrix representing digital gene expression (DGE) data.}
+#'   \item{dgeMatrix}{A sparse matrix of digital gene expression (DGE)
+#'   data.}
 #' }
 #'
 #' @keywords datasets
@@ -43,8 +44,9 @@
 #' Kim K, Macaisa L, Drouin S, Rayan N, Mello C, Yavari N, Yoo O, Wysoker A,
 #' Shakir K, Nemesh J, Kashin S, Goldman M, Genovese G, Fritch H, Hogan M,
 #' Flowers K, Finn E, Vanderburg C, Ichihara K, Macosko E, McCarroll S (2024).
-#' *Population variability: Single nucleus RNAseq from postnatal human brain* [Dataset].
-#' Available from: [NEMO Archive](https://assets.nemoarchive.org/col-npe62xg).
+#' *Population variability: Single nucleus RNAseq from postnatal human brain*
+#' [Dataset]. Available from:
+#' [NEMO Archive](https://assets.nemoarchive.org/col-npe62xg).
 #'
 #' @examples
 #' data(svmNucleusCallerInputs)

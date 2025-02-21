@@ -132,18 +132,10 @@ runIntronicSVM <- function(datasetName, cellFeaturesFile = NULL,
             col.names = TRUE, quote = FALSE, sep = "\t")
     }
 
-    # get the initial cellbender remove-background parameters and
-    # write to a file.
+    # write initial cellbender remove-background parameters to file
     if (!is.null(outCellBenderInitialParameters)) {
-        df <- cell_features_result
-        threshold_total_droplets <- round(mean(df[df$training_label_is_cell ==
-            FALSE, ]$num_transcripts, na.rm = TRUE))
-        total_droplets_included <-
-            length(which(df$num_transcripts >threshold_total_droplets))
-        expected_cells <- length(which(df$is_cell ==TRUE))
-
-        result <- data.frame(total_droplets_included = total_droplets_included,
-            expected_cells = expected_cells)
+        cbrbArgs <- getCBRBArgs(svmNucleusCaller)
+        result <- data.frame(cbrbArgs)
         write.table(result, outCellBenderInitialParameters, row.names = FALSE,
             col.names = TRUE, quote = FALSE, sep = "\t")
     }
@@ -169,7 +161,8 @@ callByIntronicSVM <- function(dataset_name, cell_features, dgeMatrix,
     validateFeaturePresence(cell_features, features)
     maxContaminationThreshold <- 0.1  # CBRB-specific contamination threshold
     log_info("Beginning SVM Intronic Cell Selection")
-    log_info(paste("Features used for cell selection:", paste(features, collapse = ", ")))
+    featureListStr<-paste(features, collapse = ", ")
+    log_info("Features used for cell selection:", featureListStr)
     rownames(cell_features) <- cell_features$cell_barcode
     cell_features$cell_barcode <- NULL
     useCellBenderFeatures <- "frac_contamination" %in% features
@@ -198,8 +191,8 @@ callByIntronicSVM <- function(dataset_name, cell_features, dgeMatrix,
     cell_features_result <- svm_result$cell_features
     trainingData <- svm_result$trainingData
 
-    selectionPlots <- createSelectionVisualization(cell_features_result, bounds_empty,
-        bounds_non_empty, useCellBenderFeatures, dataset_name)
+    selectionPlots <- createSelectionVisualization(cell_features_result,
+        bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name)
     feature_plot <- plotScaledTrainingDataFeatures(
         svm_result$trainingData[, c(features, "training_label_is_cell")]
     )
@@ -223,14 +216,17 @@ validateFeaturePresence <- function(cell_features, features) {
 
 createSelectionVisualization <- function(cell_features_labeled, bounds_empty,
     bounds_non_empty, useCellBenderFeatures, dataset_name) {
-    p1 <- plotExpressionVsIntronic(cell_features_labeled, title = "All cell barcodes",
+    p1 <- plotExpressionVsIntronic(cell_features_labeled,
+        title = "All cell barcodes",
         useCellBenderFeatures = useCellBenderFeatures)
 
     p2 <- cowplot::ggdraw(function()
-        plotCellTypeIntervals(cell_features_labeled, bounds_empty, bounds_non_empty))
+        plotCellTypeIntervals(cell_features_labeled, bounds_empty,
+        bounds_non_empty))
 
     p3 <- plotSelectedCells(cell_features_labeled)
-    p4 <- plotCellProbabilities(cell_features_labeled, strTitle = "Cell Probability")
+    p4 <- plotCellProbabilities(cell_features_labeled,
+        strTitle = "Cell Probability")
 
     ambientPeak <- round(median(cell_features_labeled[
         which(cell_features_labeled$is_cell == FALSE), ]$num_transcripts))
@@ -238,7 +234,8 @@ createSelectionVisualization <- function(cell_features_labeled, bounds_empty,
     p5 <- ggdraw(function() {
         plotSelectedCellsSmoothScatter(cell_features_labeled,
             transcriptFeature = "num_transcripts",
-            strTitlePrefix = paste0("SVM nuclei method, ambient peak(UMIs) ", ambientPeak))
+            strTitlePrefix = paste0("SVM nuclei method, ambient peak(UMIs) ",
+                ambientPeak))
     })
 
     p6 <- ggplot() + theme_void()
@@ -294,167 +291,8 @@ parseInputs <- function(cellFeaturesFile = NULL, dgeMatrixFile = NULL,
 #FIND EXEMPLAR CLASS BOUNDS
 ###############################################
 
-#' Find exemplars for nuclei and empty droplets
-#'
-#' @param cell_features The cell features data frame
-#' @param max_umis_empty Exclude cell barcodes from analysis with fewer than
-#'   these many UMIs.  This threshold should exclude noisy barcodes, but not
-#'   exclude the empty droplet cloud.
-#' @param useCellBenderFeatures When true, the CellBender remove-background
-#'   feature frac_contamination is used for cell selection.
-#' @param forceTwoClusterSolution When true, the function will attempt to find a
-#'   solution with two clusters.  This may be useful when the data is overloaded
-#'   and breaks the normal assumptions, but may find suboptimal solutions for
-#'   other data sets.
-#' @param verbose Print verbose output to log
-#' @return A list containing the bounds for the empty droplet and nuclei
-#'   exemplars
-#' @import logger
-#' @noRd
-findTrainingDataBounds <- function(cell_features, max_umis_empty = 50,
-    useCellBenderFeatures = TRUE, forceTwoClusterSolution = FALSE,
-    verbose = FALSE) {
-
-    if (useCellBenderFeatures) {
-        return(findTraingDataBoundsCBRB(cell_features,
-        max_umis_empty = max_umis_empty))
-    }
-
-    # This is more complicated because it supports multiple models.
-    max_umis_empty_off <- 20
-
-    if (forceTwoClusterSolution) {
-        # with the default UMI filter, looking for the separation
-        # between the two highest peaks
-        msg<- paste("Exemplar selection [pit between peaks] with default ",
-            "UMI filter [", max_umis_empty, "]")
-        log_info(msg)
-        defaultPitBetween <- findTrainingDataBoundsDefaultIterative(
-            cell_features,max_umis_empty = max_umis_empty,
-            method = "PitBetweenHighestPeaks", verbose = verbose)
-
-        # #with the default UMI filter, looking for the separation
-        # between the two highest peaks
-        msg <- paste("Exemplar selection [pit between peaks] with UMI filter [",
-            max_umis_empty_off, "]")
-        log_info(msg)
-        noUmiFiltertPitBetween <- findTrainingDataBoundsDefaultIterative(
-            cell_features, max_umis_empty = max_umis_empty_off,
-            method = "PitBetweenHighestPeaks", verbose = verbose)
-
-        results <- list(`Separate Two Highest Peaks` = defaultPitBetween,
-            `Separate Two Highest Peaks No Filter` = noUmiFiltertPitBetween)
-        # In the forced two cluster solution, do not enforce some
-        # number of empty droplets.
-        result <- selectBestTrainingBoundsModel(results)
-    } else {
-        # the default UMI filter as set by the user.
-        msg<-paste("Exemplar selection [pit after highest peak] with default ",
-            "UMI filter [", max_umis_empty, "]")
-        log_info(msg)
-        default <- findTrainingDataBoundsDefaultIterative(cell_features,
-            max_umis_empty = max_umis_empty, verbose = verbose)
-
-        # without a UMI filter, for low noise experiments
-        msg<-paste("Exemplar selection [pit after highest peak] with UMI ",
-            "filter [", max_umis_empty_off, "]")
-        log_info(msg)
-        noUmiFilter <- findTrainingDataBoundsDefaultIterative(cell_features,
-            max_umis_empty = max_umis_empty_off, verbose = verbose)
-        results <- list(`Default Selection` = default,
-            `No UMI Filter Selecton` = noUmiFilter)
-        # If not forcing a two cluster model, enforce some minimum
-        # fraction of empty droplets!
-        result <- selectBestTrainingBoundsModel(results,
-            minEmptyDropletFraction = 0.2)
-    }
 
 
-    return(result)
-}
-
-#' Select the best model from a list
-#'
-#' This function selects the best model from a list of results.  If the minimum
-#' empty droplet fraction is set, it will only consider models that have a
-#' minimum fraction of empty droplets. If no models meet the minimum empty
-#' droplet fraction, it will select the best model from the original list.
-#'
-#' @param results A list of results from findTrainingDataBoundsDefaultIterative
-#' @param minEmptyDropletFraction The minimum fraction of empty droplets that
-#'   must be present in the training data.
-#' @return The best model from the list
-#' @import logger
-#' @noRd
-selectBestTrainingBoundsModel <- function(results, minEmptyDropletFraction = NULL) {
-    # To make bioconductor happy use vapply.
-    silhouettes <- vapply(results, function(res) res$best_silhouette, numeric(1))
-    numEmpty <- vapply(results, function(res) res$numEmpty, numeric(1))
-    numNonEmpty <- vapply(results, function(res) res$numNonEmpty, numeric(1))
-
-    # the row names of the data frame are the model names.
-    df <- data.frame(silhouettes = silhouettes,
-        numEmpty = numEmpty,
-        numNonEmpty = numNonEmpty)
-
-    # remove NA silhouette results.  this explicitly ignores NAs, in
-    # cases where the model failed to find good bounds.
-    df <- df[!is.na(df$silhouettes), ]
-
-    # get the best silhouette score name
-    best_name <- rownames(df[which.max(df$silhouettes), ])
-
-    # if maxEmptyDropletFraction is not null, drop any results that
-    # have a low number of empty droplets.
-    if (!is.null(minEmptyDropletFraction)) {
-        df <- df[df$numEmpty/df$numNonEmpty > minEmptyDropletFraction,
-            ]
-    }
-
-    # if there are results left with reasonable numbers of empty/non
-    # empties, keep the best silhouette score.  if there are no
-    # results left, keep the best silhouette score from the original
-    # list.
-    if (nrow(df) > 0) {
-        best_name <- rownames(df[which.max(df$silhouettes), ])
-    }
-
-    # Log the selected result
-    msg<-paste("Selected result [",best_name,"] with best silhouette score [",
-        round(max(silhouettes), 3), "]", sep = "")
-    log_info()
-
-    # label the results that have the best initialization
-    result <- results[[best_name]]
-    result$method <- best_name
-
-    # Return the best name and result as a list
-    return(result)
-}
-
-findTraingDataBoundsCBRB <- function(cell_features, max_umis_empty = 50,
-    maxContaminationThreshold = 0.1) {
-    # the interval for empty cells for training data explicitly avoid
-    # searching in the very low UMI area, which are likely tons of
-    # PCR error barcodes.
-    cell_features_empty <- cell_features[cell_features$frac_contamination ==
-        1 & cell_features$num_transcripts > max_umis_empty, ]
-    bounds_empty <- getHighestDensityIntervalsEnforcedSmoothing(
-        cell_features_empty, pctDensity = 75)
-
-    # the intervals for nuclei examples
-    b <- selectNucleiExemplarBounds(cell_features, maxContaminationThreshold,
-        max_umis_empty = max_umis_empty, initialDensity = 95,
-        bounds_empty = bounds_empty, extendCellSelectionBounds = TRUE)
-
-    bounds_non_empty <- b$bounds_non_empty
-    bounds_non_empty_extended <- b$bounds_non_empty_extended
-
-    result <- list(bounds_empty = bounds_empty,
-        bounds_non_empty = bounds_non_empty_extended)
-
-    return(result)
-}
 
 #' Calculate the silhouette score for a clustering of cells.
 #'
@@ -474,8 +312,8 @@ findTraingDataBoundsCBRB <- function(cell_features, max_umis_empty = 50,
 calculate_silhouette <- function(cell_features_labeled, downsampleRate = 0.1,
     showPlot = FALSE, verbose = FALSE) {
     # restrict to the training data
-    d <- cell_features_labeled[!is.na(cell_features_labeled$training_label_is_cell),
-        ]
+    idx <- which(!is.na(cell_features_labeled$training_label_is_cell))
+    d <- cell_features_labeled[idx,]
 
     # downsample to 10% of the original data.
     d <- d[sample(nrow(d), nrow(d) * downsampleRate), ]
@@ -600,8 +438,11 @@ selectNucleiExemplarBounds <- function(cell_features,
     # cells that have contamination < 1.
     cell_features_non_empty <- cell_features[cell_features$frac_contamination <
         1, ]
-    contaminationThreshold <- stats::quantile(cell_features_non_empty$frac_contamination,
-        probs = seq(0, 1, 0.01))["25%"]
+    contaminationThreshold <- stats::quantile(
+        cell_features_non_empty$frac_contamination,
+        probs = seq(0, 1, 0.01)
+    )["25%"]
+
     cell_features_non_empty <-
         cell_features_non_empty[cell_features_non_empty$frac_contamination <=
         contaminationThreshold, ]
@@ -613,14 +454,25 @@ selectNucleiExemplarBounds <- function(cell_features,
     # region.
     bounds_non_empty_extended <- NULL
     if (extendCellSelectionBounds & !is.null(bounds_empty)) {
-        idx <- which(log10(cell_features$num_transcripts) > (bounds_empty$umi_lower_bound +
-            1) & cell_features$pct_intronic >= bounds_non_empty$intronic_lower_bound &
-            cell_features$pct_intronic <= bounds_non_empty$intronic_upper_bound &
-            cell_features$frac_contamination <= maxContaminationThreshold)
-        bounds_non_empty_extended <- getHighestDensityIntervalsEnforcedSmoothing(cell_features[idx,
-            ], pctDensity = 95, showPlot = FALSE)
-        bounds_non_empty_extended <- merge_bounds(bounds_non_empty, bounds_non_empty_extended)
+        idx <- which(
+            log10(cell_features$num_transcripts) >
+                (bounds_empty$umi_lower_bound + 1) &
+                cell_features$pct_intronic >=
+                bounds_non_empty$intronic_lower_bound &
+                cell_features$pct_intronic <=
+                bounds_non_empty$intronic_upper_bound &
+                cell_features$frac_contamination <=
+                maxContaminationThreshold
+        )
+
+        bounds_non_empty_extended <-
+            getHighestDensityIntervalsEnforcedSmoothing(cell_features[idx,],
+            pctDensity = 95, showPlot = FALSE)
+
+        bounds_non_empty_extended <- merge_bounds(bounds_non_empty,
+            bounds_non_empty_extended)
     }
+
     return(list(bounds_non_empty = bounds_non_empty,
                 bounds_non_empty_extended = bounds_non_empty_extended))
 }
@@ -644,10 +496,14 @@ selectNucleiExemplarBounds <- function(cell_features,
 #'   `training_label_is_cell`.
 #' @noRd
 labelTrainingData <- function(cell_features, bounds_empty, bounds_non_empty,
-    maxContaminationThreshold = 0.1, useCellBenderFeatures = TRUE, verbose = TRUE) {
+    maxContaminationThreshold = 0.1, useCellBenderFeatures = TRUE,
+    verbose = TRUE) {
+
     if (useCellBenderFeatures) {
-        result <- (labelTrainingDataCBRB(cell_features, bounds_empty, bounds_non_empty,
-            maxContaminationThreshold = maxContaminationThreshold, verbose = verbose))
+        result <- (labelTrainingDataCBRB(cell_features, bounds_empty,
+            bounds_non_empty,
+            maxContaminationThreshold = maxContaminationThreshold,
+            verbose = verbose))
     } else {
         result <- labelTrainingDataDefault(cell_features, bounds_empty,
             bounds_non_empty, verbose = verbose)
@@ -668,7 +524,8 @@ labelTrainingDataCBRB <- function(cell_features, bounds_empty, bounds_non_empty,
     bounds_non_empty_extended = NULL, maxContaminationThreshold = 0.1,
     verbose = TRUE) {
     # Define a function to find indices based on the given bounds
-    find_indices <- function(cell_features, bounds, maxContaminationThreshold = 1,
+    find_indices <-
+        function(cell_features, bounds, maxContaminationThreshold = 1,
         minContaminationThreshold = 0) {
         which(log10(cell_features$num_transcripts) >= bounds$umi_lower_bound &
             log10(cell_features$num_transcripts) <= bounds$umi_upper_bound &
@@ -729,7 +586,8 @@ labelTrainingDataDefault <- function(cell_features, bounds_empty,
     training_data$training_label_is_cell[idxEmpty] <- FALSE
 
     if (verbose) {
-        log_info("Training empty/nuclei cell barcodes selected [using density-only method]")
+        log_info("Training empty/nuclei cell barcodes selected",
+        "[using density-only method]")
     }
     return(training_data)
 }
@@ -756,36 +614,25 @@ runSVM <- function(cell_features_labeled, features, bounds_empty,
 
     # get the training data - restrict data to the labeled training
     # data for the specific features we are using.
-    trainingData <-
-        cell_features_scaled[!is.na(cell_features_scaled$training_label_is_cell),
-        c(features, "training_label_is_cell")]
+    trainingData <- cell_features_scaled[
+        !is.na(cell_features_scaled$training_label_is_cell),
+        c(features, "training_label_is_cell")
+    ]
+
     trainingData$training_label_is_cell <-
         as.factor(trainingData$training_label_is_cell)
-
-    # tune hyper parameters parameters <-
-    # tune.svm(training_label_is_cell ~ ., data = trainingData, type
-    # = 'C-classification', kernel = 'radial', gamma = 10^(-2:1),
-    # cost = 10^(-2:1), probability=TRUE)
-    # svm_model=parameters$best.model
 
     # train the SVM
     svm_model <- e1071::svm(training_label_is_cell ~ ., data = trainingData,
         type = "C-classification", kernel = "radial", probability = TRUE)
-
     # predict all points
     predictions <- stats::predict(svm_model, cell_features_scaled[, features],
         probability = TRUE)
-
     # Extract the probabilities
     probabilities <- attr(predictions, "probabilities")
-
-    # Calculate confidence scores confidence_scores <-
-    # apply(probabilities, 1, function(x) max(x) / sum(x))
-
     # Combine predictions and confidence into a dataframe
-    results_df <- data.frame(is_cell = predictions, is_cell_prob = probabilities[,
-        "TRUE"])
-
+    results_df <- data.frame(is_cell = predictions,
+        is_cell_prob = probabilities[,"TRUE"])
     # optionally override cell probability
     if (!is.null(cellProbabilityThreshold)) {
         results_df$is_cell <-
@@ -793,19 +640,17 @@ runSVM <- function(cell_features_labeled, features, bounds_empty,
             TRUE, FALSE)
     }
 
-    # Exclude barcodes lower than the lower bound of UMIs from
-    # classification.  There's some noisy barcodes with few reads
-    # that don't have enough data to be reliably classified but we
-    # know they are not true nuclei.
-    idx <- which(log10(cell_features_labeled$num_transcripts) < bounds_empty$umi_upper_bound)
+    # Exclude barcodes lower than the lower bound of UMIs from classification.
+    idx <- which(log10(cell_features_labeled$num_transcripts) <
+        bounds_empty$umi_upper_bound)
+
     results_df$is_cell_prob[idx] <- NA
-    # results_df$confidence[idx]=NA
     results_df$is_cell[idx] <- FALSE
 
     # merge the results_df with the original cell_features
     cell_features_result <- cbind(cell_features_labeled, results_df)
-    result <- list(cell_features = cell_features_result, trainingData = trainingData,
-        svm_model = svm_model)
+    result <- list(cell_features = cell_features_result,
+        trainingData = trainingData, svm_model = svm_model)
     return(result)
 }
 
@@ -813,7 +658,8 @@ scaleFeatures <- function(cell_features_labeled, features) {
     # make an explicity copy
     cell_features_scaled <- data.frame(cell_features_labeled)
     # log 10 the larger features
-    cell_features_scaled$num_transcripts <- log10(cell_features_scaled$num_transcripts)
+    cell_features_scaled$num_transcripts <-
+        log10(cell_features_scaled$num_transcripts)
 
     # This feature isn't used by default but is scaled in case
     # someone wants to experiment.
@@ -828,289 +674,6 @@ scaleFeatures <- function(cell_features_labeled, features) {
 }
 
 
-
-############################################# GENE MODULE DISCOVERY
-############################################# AND FEATURE BUILDING
-
-#' Find Nuclei/Empty gene modules
-#'
-#' Given the training nuclei and empty cell barcodes, find the gene modules that
-#' are more differentially expressed between the groups, and score all cells
-#' with those features.
-#'
-#' @param cell_features_labeled The cell_features_labelel dataframe with an
-#'   additional indicator column 'training_label_is_cell' that is TRUE for
-#'   nuclei and FALSE for empty.  This value is set to NA for all other cell
-#'   barcodes.
-#' @param dgeMatrix The matrix of gene expression.
-#' @param numGenes The number of genes to select for each module.
-#' @param useCellBenderFeatures If true, additional plots are generated to
-#'   compare the empty module score to cellbender fraction of UMIs removed.
-#' @param verbose A boolean indicating whether to print log messages.
-#' @return A list containing the cell features with the gene module scores and
-#'   QC plots. If there are no differentially expressed genes, the
-#'   empty_gene_module_score will be set to NA and the plots will be NULL.
-#' @import Seurat presto Matrix methods
-#' @noRd
-addGeneModules <- function(cell_features_labeled, dgeMatrix, numGenes = 100,
-    useCellBenderFeatures = TRUE, verbose = FALSE) {
-    log_info("Adding gene module score(s)")
-    # The annoying importing of methods is to make R CMD CHECK happy.
-    dgeMatrix <- methods::as(dgeMatrix, "CsparseMatrix")
-
-    # garbage collection to get rid of dense matrix.
-    gc()
-
-    # make sure the dgeMatrix is ordered in the same way as the
-    # metadata before merging.
-    dgeMatrix <- dgeMatrix[, rownames(cell_features_labeled)]
-
-    # create a seurat object of the cells, with expression and single
-    # cell metrics.
-    seurat_object <- CreateSeuratObject(counts = dgeMatrix)
-    seurat_object <- add_cell_metadata(seurat_object, cell_features_labeled)
-
-    # subset to the training cell barcodes.
-    seurat_object_trainng <-
-        seurat_object[, which(!is.na(seurat_object$training_label_is_cell))]
-
-    # pseudobulk to detect differentially expressed genes, standard
-    # normalization
-    seurat_object_pseudobulked <- pseudobulkEmpties(seurat_object_trainng,
-        showPlot = FALSE, verbose = verbose)
-    seurat_object_pseudobulked <- NormalizeData(seurat_object_pseudobulked,
-        normalization.method = "LogNormalize",
-        scale.factor = 10000, verbose = verbose)
-
-    # get the differentially expressed genes in each direction.
-    deWilcoxPB <- de_wilcox(seurat_object_pseudobulked, fdrThreshold = 0.05,
-        min.pct = 0.25, logfc.threshold = 1)
-
-    # select up to numGenes from each direction.
-    upGenes <- deWilcoxPB[deWilcoxPB$avg_log2FC > 0, ]
-    downGenes <- deWilcoxPB[deWilcoxPB$avg_log2FC < 0, ]
-    downGenes <- downGenes[order(downGenes$avg_log2FC, decreasing = FALSE),
-        ]
-    geneListUp <- head(rownames(upGenes), numGenes)
-    geneListDown <- head(rownames(downGenes), numGenes)
-
-    # if there are no genes in the list, exit early.
-    if (length(geneListDown) == 0) {
-        log_warn("No differentially expressed genes found for empty cell barcodes.")
-        cell_features <- cell_features_labeled
-        result <- list(cell_features = cell_features, downGenes = downGenes,
-            gene_module_plots = list(training_data = NULL,
-            frac_contamination = NULL, empty_gene_module_score = NULL,
-            empty_gene_module_score_vs_contam = NULL))
-        return(result)
-    }
-
-
-    # go back to the single cell data for scoring modules.
-    # seurat_object_pseudobulked=AddModuleScore(seurat_object_pseudobulked,
-    # features = list(geneListUp), name = 'nuclei_gene_module_score')
-    seurat_object_pseudobulked <- AddModuleScore(seurat_object_pseudobulked,
-        features = list(geneListDown), name = "empty_gene_module_score",
-        verbose = verbose)
-
-    # go back to the single cell data for scoring modules.  this will
-    # add the score to all data, not just the training data.
-    seurat_object <- NormalizeData(seurat_object, normalization.method = "LogNormalize",
-        scale.factor = 10000, verbose = verbose)
-
-    # seurat_object=AddModuleScore(seurat_object, features =
-    # list(geneListUp), name = 'nuclei_gene_module_score')
-    seurat_object <- AddModuleScore(seurat_object, features = list(geneListDown),
-        name = "empty_gene_module_score", verbose = verbose)
-
-    # create a dataframe that includes the module scores clean up the
-    # module names to remove the training '1'.
-    cell_features <- seurat_object[[]]
-    colnames(cell_features) <- gsub(x = colnames(cell_features), pattern = "1",
-        replacement = "")
-    dropCols <- c("orig.ident", "nCount_RNA", "nFeature_RNA", "training_identity")
-    cell_features <- cell_features[, !(colnames(cell_features) %in% dropCols)]
-
-    # QC plots p1=VlnPlot(seurat_object_pseudobulked, features =
-    # c('nuclei_gene_module_score1', 'empty_gene_module_score1'),
-    # group.by = 'training_identity')
-    p1 <- VlnPlot(seurat_object_pseudobulked, features = c("empty_gene_module_score1"),
-        group.by = "training_identity")
-    p2 <- ggplot() + theme_void()  # empty plot
-    p6 <- ggplot() + theme_void()  # empty plot
-
-    p4 <- scatterPlotModuleScore(cell_features, moduleName = "empty_gene_module_score",
-        strTitle = "Empty Score")
-
-    # Only generate these plots if CBRB is in use.
-    if (useCellBenderFeatures) {
-        p2 <- scatterPlotModuleScore(cell_features, moduleName = "frac_contamination",
-            strTitle = "CellBender fraction contamination")
-        p6 <- plotModuleVsFracContam(cell_features, moduleName = "empty_gene_module_score")
-    }
-    result <- list(cell_features = cell_features, downGenes = downGenes,
-        gene_module_plots = list(training_data = p1, frac_contamination = p2,
-            empty_gene_module_score = p4, empty_gene_module_score_vs_contam = p6))
-    return(result)
-}
-
-pseudobulkEmpties <- function(seurat_object, showPlot = FALSE, verbose = FALSE) {
-    # Separate target (nuclei) and non-target cells (empties)
-    target_cells <- subset(seurat_object, subset = training_identity ==
-        "nuclei")
-    non_target_cells <- subset(seurat_object, subset = training_identity ==
-        "empty")
-
-    # Extract expression matrices
-    target_expr <- GetAssayData(target_cells, assay = "RNA", layer = "counts")
-    non_target_expr <- GetAssayData(non_target_cells, assay = "RNA", layer = "counts")
-
-    # Pseudobulk non-target cells to match UMI count of target cells
-    pseudobulked_data <- pseudobulk_to_match_umi_fast_optimized(target_expr,
-        non_target_expr)
-    # Remove columns with 0 total counts
-    non_zero_cols <- colSums(pseudobulked_data) > 0
-    filtered_pseudobulked_data <- pseudobulked_data[, non_zero_cols, drop = FALSE]
-
-    # Assign names to pseudobulked cells
-    pseudobulked_cell_names <- paste0("EMPTY_", seq_len(ncol(filtered_pseudobulked_data)))
-    colnames(filtered_pseudobulked_data) <- pseudobulked_cell_names
-
-    # Combine target and pseudobulked non-target data
-    combined_counts <- cbind(target_expr, filtered_pseudobulked_data)
-
-    # Create a new Seurat object with the combined data
-    combined_seurat <- CreateSeuratObject(counts = combined_counts)
-
-    # Calculate metadata for pseudobulked cells
-    pseudobulk_nCount_RNA <- colSums(filtered_pseudobulked_data)
-    pseudobulk_nFeature_RNA <- colSums(filtered_pseudobulked_data > 0)
-    pseudobulk_orig_ident <- rep("SeuratProject", length(pseudobulked_cell_names))
-
-    # Create an empty data frame with the same columns as
-    # target_cells@meta.data
-    empty_metadata <- target_cells@meta.data[0, ]
-    empty_metadata <- empty_metadata[rep(1, length(pseudobulked_cell_names)),
-        ]
-
-    # Assign row names and fill in the metadata
-    rownames(empty_metadata) <- pseudobulked_cell_names
-    empty_metadata$orig.ident <- pseudobulk_orig_ident
-    empty_metadata$nCount_RNA <- pseudobulk_nCount_RNA
-    empty_metadata$nFeature_RNA <- pseudobulk_nFeature_RNA
-    empty_metadata$training_identity <- "empty"
-
-    # Combine the metadata
-    combined_metadata <- rbind(target_cells@meta.data, empty_metadata)
-
-    # Add the metadata to the combined Seurat object
-    combined_seurat <- AddMetaData(combined_seurat, metadata = combined_metadata)
-
-    if (showPlot) {
-        z <- combined_seurat@meta.data
-
-        # TO MAKE R CMD CHECK HAPPY
-        nCount_RNA <- training_identity <- NULL
-
-        p <- ggplot(z, aes(x = nCount_RNA, fill = training_identity)) +
-            geom_density(alpha = 0.5) + labs(title = "Density Plot of nCount_RNA by Training Identity",
-            x = "nCount_RNA", y = "Density") + theme_minimal()
-        gridExtra::grid.arrange(p)
-    }
-
-    log_info("Finished Constructing pseudobulked empties")
-    return(combined_seurat)
-}
-
-#' Pseudobulk empty droplets to match UMI count of target cells
-#'
-#' Function to pseudobulk non-target cells to match UMI count of target cells
-#' without converting to dense format Optimized pseudobulk function with
-#' shuffling.  This function is faster than the original pseudobulk function,
-#' but produces a very similar list of top gene results.
-#'
-#' @param target_expr The target data set (nuclei)
-#' @param non_target_expr The non target data set to pseudobulk (empty droplets)
-#' @param verbose Print progress messages
-#'
-#' @return A sparse matrix with pseudobulked data
-#' @importFrom Matrix colSums rowSums
-#' @noRd
-pseudobulk_to_match_umi_fast_optimized <- function(target_expr, non_target_expr,
-    verbose = FALSE) {
-    log_info("Constructing pseudobulked empty droplets for gene module detection")
-
-    # Get UMI counts for target and non-target cells
-    target_umis <- Matrix::colSums(target_expr)
-    shuffled_target_umis <- sample(target_umis)
-    non_target_umi_counts <- Matrix::colSums(non_target_expr)
-    non_target_indices <- sample(length(non_target_umi_counts))
-    non_target_umi_counts_shuffled <- non_target_umi_counts[non_target_indices]
-
-    # Initialize the pseudobulk matrix
-    pseudobulk_matrix <- Matrix::Matrix(0, nrow = nrow(non_target_expr),
-        ncol = length(shuffled_target_umis), sparse = TRUE)
-    rownames(pseudobulk_matrix) <- rownames(non_target_expr)
-
-    # Compute cumulative sums
-    cumsum_target_umis <- cumsum(shuffled_target_umis)
-    cumsum_non_target <- cumsum(non_target_umi_counts_shuffled)
-
-    # Initialize start and end indices
-    start_indices <- integer(length(shuffled_target_umis))
-    end_indices <- integer(length(shuffled_target_umis))
-    prev_end_index <- 0
-
-    for (i in seq_along(shuffled_target_umis)) {
-        target_cumsum <- cumsum_target_umis[i]
-        end_index <- findInterval(target_cumsum, cumsum_non_target) + 1
-
-        if (end_index > length(cumsum_non_target)) {
-            if (verbose)
-                message("Not enough non-target UMIs to match target UMIs.")
-            break
-        }
-
-        start_index <- prev_end_index + 1
-        start_indices[i] <- start_index
-        end_indices[i] <- end_index
-        prev_end_index <- end_index
-    }
-
-    # Remove zero entries (in case we ran out of non-target UMIs)
-    valid_indices <- which(start_indices > 0 & end_indices >= start_indices)
-    for (i in valid_indices) {
-        selected_cells_indices <- non_target_indices[start_indices[i]:end_indices[i]]
-        pseudobulk_matrix[, i] <- Matrix::rowSums(non_target_expr[, selected_cells_indices,
-            drop = FALSE])
-        if (verbose && i%%100 == 0) {
-            message("Pseudobulked cell barcode [", i, "] of [", length(shuffled_target_umis),
-                "]")
-        }
-    }
-
-    return(pseudobulk_matrix)
-}
-
-
-de_wilcox <- function(seurat_object, fdrThreshold = 1, min.pct = 0.25,
-    logfc.threshold = 0.25) {
-    de_results <- FindMarkers(seurat_object, ident.1 = "nuclei", ident.2 = "empty",
-        test.use = "wilcox", min.pct = min.pct, logfc.threshold = logfc.threshold,
-        group.by = "training_identity", only.pos = FALSE)
-    de_results <- de_results[order(de_results$avg_log2FC, decreasing = TRUE),
-        ]
-    de_results <- de_results[de_results$p_val_adj <= fdrThreshold, ]
-    return(de_results)
-}
-
-add_cell_metadata <- function(seurat_object, cell_features) {
-    cell_features$training_identity <- ifelse(cell_features$training_label_is_cell,
-        "nuclei", "empty")
-    seurat_object <- AddMetaData(seurat_object, metadata = cell_features)
-    Idents(seurat_object) <- cell_features$training_label_is_cell
-    return(seurat_object)
-}
 
 
 ######################## PLOTTING CODE
@@ -1158,9 +721,9 @@ arrangeSVMCellSelectionPlots <- function(plots, geneModulePlots = NULL,
 
     gridExtra::grid.arrange(final_plot)
 
-    plots[[4]] <- plots[[4]] + custom_theme(title_size = 12, axis_title_size = 10,
+    plots[[4]] <- plots[[4]] +
+        custom_theme(title_size = 12, axis_title_size = 10,
         axis_text_size = 10, legend_title_size = 10, legend_text_size = 10)
-
 
     gridExtra::grid.arrange(plots[[4]])
 
@@ -1196,16 +759,18 @@ arrangeSVMCellSelectionPlotsNoCBRB <- function(plots, geneModulePlots = NULL,
     featurePlot = NULL, dataset_name, outPDF, useOpenPDF = FALSE) {
     # re-order plots to include some plots that would otherwise be
     # empty due to CBRB features not being used.
-    # 1. initial selection exemplars (plots[[2]])
-    # 2. empty score distribution based on exemplars (geneModulePlots[['training_data]])
-    # 3. empty score distribution (geneModulePlots[[2]])
-    # 4. Selected cells (plots[[3]])
-    # 5. Selected cell probability (plots[[4]])
-    # 6. SmoothScatter final selection [[plots[[5]]]]
+    # 1. initial selection exemplars
+    # 2. empty score distribution based on exemplars
+    # 3. empty score distribution
+    # 4. Selected cells
+    # 5. Selected cell probability
+    # 6. SmoothScatter final selection
 
-    pList <- list(plots[[2]], geneModulePlots[["training_data"]] + custom_theme(),
+    pList <- list(
+        plots[[2]], geneModulePlots[["training_data"]] + custom_theme(),
         geneModulePlots[["empty_gene_module_score"]] + custom_theme(),
-        plots[[3]] + custom_theme(), plots[[4]] + custom_theme(), plots[[5]])
+        plots[[3]] + custom_theme(), plots[[4]] + custom_theme(), plots[[5]]
+    )
 
     # Arrange the plots into a grid
     plot_grid <- plot_grid(plotlist = pList, ncol = 2, nrow = 3)
@@ -1270,8 +835,8 @@ arrangeSVMGeneModulePlots <- function(plots, dataset_name) {
 
 # A custom theme for ggplot2 plots to make the text size appropriate
 # when all plots are put together on a single page.
-custom_theme <- function(title_size = 8, axis_title_size = 6, axis_text_size = 6,
-    legend_title_size = 6, legend_text_size = 6) {
+custom_theme <- function(title_size = 8, axis_title_size = 6,
+    axis_text_size = 6, legend_title_size = 6, legend_text_size = 6) {
     theme(plot.title = element_text(size = title_size, face = "bold"),
         axis.title = element_text(size = axis_title_size),
         axis.text = element_text(size = axis_text_size),
@@ -1309,11 +874,14 @@ getCellSelectionPlotTitle <- function(cell_features_result, strTitlePrefix = "",
     # if the number of reads is available, add the average reads/UMI
     # to the title.
     if ("num_reads" %in% colnames(selected)) {
-        readsPerUMI <- mean(selected$num_reads/selected[[transcriptFeature]])
-        strTitle <- sprintf("%s, intronic>=%.2f\n%s Nuclei, %.1f reads/UMI, %d+ UMIs, medUMIs %s",
-            strTitlePrefix, minIntronic, comma_formatter(numSTAMPs), readsPerUMI,
-            minNumUmis, comma_formatter(medianUMI))
-    } else {
+        strTitle <- sprintf(
+            paste0(
+                "%s, intronic >= %.2f\n%s Nuclei, %.1f reads/UMI,",
+                " %d+ UMIs, medUMIs %s"
+            ),
+            strTitlePrefix, minIntronic, comma_formatter(numSTAMPs),
+            readsPerUMI, minNumUmis, comma_formatter(medianUMI)
+        )
 
     }
 
@@ -1371,7 +939,8 @@ plotExpressionVsIntronic <- function(cell_features, densityCenters = NULL,
 
     if (!is.null(intronicThreshold)) {
         p <- p +
-            geom_hline(yintercept = intronicThreshold, linetype = "dotted", color = "red", linewidth = 1)
+            geom_hline(yintercept = intronicThreshold, linetype = "dotted",
+                color = "red", linewidth = 1)
     }
     return(p)
 }
@@ -1381,7 +950,8 @@ plotExpressionVsIntronic <- function(cell_features, densityCenters = NULL,
 #' @param cell_features A data frame containing the cell features.
 #' @param bounds_empty A list containing the bounds for the empty cells.
 #' @param bounds_non_empty A list containing the bounds for the non-empty cells.
-#' @param strTitleOverride The title of the plot.  Overrides a more generic title.
+#' @param strTitleOverride The title of the plot.  Overrides a more generic
+#'   title.
 #' @param cex.axis The size of the axis text.
 #' @param cex.lab The size of the axis labels.
 #' @param cex.main The size of the main title.
@@ -1394,10 +964,10 @@ plotCellTypeIntervals <- function(cell_features, bounds_empty, bounds_non_empty,
     # how many cell barcodes in the training set?
     num_training_cells <- length(which(cell_features$training_label_is_cell))
 
-    smoothScatter(log10(cell_features$num_transcripts), cell_features$pct_intronic,
-        xlim = log10_UMI_AXIS_RANGE_NEW, ylim = c(0, 1), xlab = "log10( UMIs )",
-        ylab = "intronic", main = "", axes = TRUE, cex.axis = cex.axis,
-        cex.lab = cex.lab)
+    smoothScatter(log10(cell_features$num_transcripts),
+        cell_features$pct_intronic, xlim = log10_UMI_AXIS_RANGE_NEW,
+        ylim = c(0, 1), xlab = "log10( UMIs )", ylab = "intronic",
+        main = "", axes = TRUE, cex.axis = cex.axis, cex.lab = cex.lab)
 
     strTitle <- paste("SVM Training -- initial nuclei exemplars selected [",
         num_training_cells, "]", sep = "")
@@ -1408,12 +978,16 @@ plotCellTypeIntervals <- function(cell_features, bounds_empty, bounds_non_empty,
 
     title(main = strTitle, line = 1, col.main = "black", cex.main = cex.main)
 
-    graphics::rect(bounds_empty$umi_lower_bound, bounds_empty$intronic_lower_bound,
-        bounds_empty$umi_upper_bound, bounds_empty$intronic_upper_bound,
+    graphics::rect(bounds_empty$umi_lower_bound,
+        bounds_empty$intronic_lower_bound,
+        bounds_empty$umi_upper_bound,
+        bounds_empty$intronic_upper_bound,
         border = "red", lwd = 3, lty = 1)
+
     graphics::rect(bounds_non_empty$umi_lower_bound,
         bounds_non_empty$intronic_lower_bound,
-        bounds_non_empty$umi_upper_bound, bounds_non_empty$intronic_upper_bound,
+        bounds_non_empty$umi_upper_bound,
+        bounds_non_empty$intronic_upper_bound,
         border = "green", lwd = 3, lty = 1)
 
     # reset par to defaults.  trying to save the original PAR and
@@ -1424,10 +998,9 @@ plotCellTypeIntervals <- function(cell_features, bounds_empty, bounds_non_empty,
 plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
     strTitle <- "Selected Nuclei"
 
-    umi_min_threshold <- min(log10(cell_features_result[cell_features_result$is_cell ==
-        TRUE, ][["num_transcripts"]]))
-    intronic_min_threshold <- min(cell_features_result[cell_features_result$is_cell ==
-        TRUE, ]$pct_intronic)
+    df <- cell_features_result[cell_features_result$is_cell ==TRUE,]
+    umi_min_threshold <- min(log10(df[["num_transcripts"]]))
+    intronic_min_threshold <- min(df[["pct_intronic"]])
 
     # TO MAKE R CMD CHECK HAPPY
     num_transcripts <- pct_intronic <- is_cell <- NULL
@@ -1441,7 +1014,8 @@ plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
             color = "Selected Cell"
         ) +
         ggtitle(strTitle) +
-        scale_color_manual(values = c("TRUE" = "green", "FALSE" = "lightblue")) +
+        scale_color_manual(values =
+            c("TRUE" = "green", "FALSE" = "lightblue")) +
         coord_cartesian(xlim = log10_UMI_AXIS_RANGE_NEW) +
         theme_minimal() +
         guides(color = guide_legend(override.aes = list(size = 4, alpha=1)))
@@ -1458,13 +1032,14 @@ plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
 #' This function creates a smooth scatter plot for selected cells, showing the
 #' relationship between transcript counts and percent intronic features.
 #'
-#' @param cell_features A dataframe containing cell metadata with at least the columns
-#'   specified by `transcriptFeature` and `pct_intronic`.
+#' @param cell_features A dataframe containing cell metadata with at least the
+#'   columns specified by `transcriptFeature` and `pct_intronic`.
 #' @param strTitlePrefix A prefix for the plot title.
-#' @param transcriptFeature The column name for transcript counts (default: 'num_transcripts').
+#' @param transcriptFeature The column name for transcript counts (default:
+#'   'num_transcripts').
 #' @param changePar Logical; if TRUE, adjusts graphical parameters for the plot.
-#' @param useCellBenderFeatures Logical; if FALSE, returns an empty ggplot object.
-#'
+#' @param useCellBenderFeatures Logical; if FALSE, returns an empty ggplot
+#'   object.
 #' @return A plot object or NULL.
 #' @import ggplot2
 #' @importFrom graphics par smoothScatter title abline
@@ -1494,11 +1069,9 @@ plotSelectedCellsSmoothScatter <- function(cell_features, strTitlePrefix = "",
 
     strTitle <- getCellSelectionPlotTitle(cell_features_filtered,
         strTitlePrefix = strTitlePrefix, transcriptFeature = transcriptFeature)
-
-    umi_min_threshold <- min(cell_features_filtered[cell_features_filtered$is_cell ==
-        TRUE, ][[transcriptFeature]])
-    intronic_min_threshold <- min(cell_features_filtered[cell_features_filtered$is_cell ==
-        TRUE, ]$pct_intronic)
+    df <- cell_features_filtered[cell_features_filtered$is_cell ==TRUE, ]
+    umi_min_threshold <- min(df[[transcriptFeature]])
+    intronic_min_threshold <- min(df[["pct_intronic"]])
 
     if (changePar) {
         opar <- graphics::par(no.readonly = TRUE)
@@ -1510,7 +1083,8 @@ plotSelectedCellsSmoothScatter <- function(cell_features, strTitlePrefix = "",
             1), xlab = xlab, ylab = "intronic", axes = TRUE, cex.axis = 0.6,
         cex.lab = 0.7)
 
-    graphics::title(main = strTitle, line = 0.25, col.main = "black", cex.main = 0.65)
+    graphics::title(main = strTitle, line = 0.25,
+        col.main = "black", cex.main = 0.65)
     graphics::abline(v = log10(umi_min_threshold), col = "red", lty = 2)
     graphics::abline(h = intronic_min_threshold, col = "red", lty = 2)
 
@@ -1553,14 +1127,17 @@ plotScaledTrainingDataFeatures <- function(trainingData) {
 }
 
 
-plotCellProbabilities <- function(cell_features, strTitle = "Nuclei Probability") {
+plotCellProbabilities <- function(cell_features,
+    strTitle = "Nuclei Probability") {
+
     df <- cell_features[which(cell_features$is_cell_prob >= 0.5), ]
 
     breaks <- c(0.5, 0.6, 0.7, 0.8, 0.9, 1)
     colors <- c("red", "purple", "orange", "blue", "green")
 
     # Assign bins to is_cell_prob
-    df$is_cell_prob_bin <- cut(df$is_cell_prob, breaks = breaks, include.lowest = TRUE)
+    df$is_cell_prob_bin <-
+        cut(df$is_cell_prob, breaks = breaks, include.lowest = TRUE)
 
     # Plot
 
@@ -1587,8 +1164,10 @@ plotCellProbabilities <- function(cell_features, strTitle = "Nuclei Probability"
 
 ####################### GENE MODULE PLOTS
 
-scatterPlotModuleScore <- function(cell_features, moduleName = "nuclei_gene_module_score",
-    strTitle = "", point_size = 0.25, alpha = 0.25) {
+scatterPlotModuleScore <- function(cell_features,
+    moduleName = "nuclei_gene_module_score", strTitle = "",
+    point_size = 0.25, alpha = 0.25) {
+
     # TO MAKE R CMD CHECK HAPPY
     num_transcripts <- pct_intronic <- NULL
 
@@ -1613,8 +1192,8 @@ scatterPlotModuleScore <- function(cell_features, moduleName = "nuclei_gene_modu
     return(p)
 }
 
-plotModuleVsFracContam <- function(cell_features, moduleName = "nuclei_gene_module_score",
-    point_size = 0.5, alpha = 0.5) {
+plotModuleVsFracContam <- function(cell_features,
+    moduleName = "nuclei_gene_module_score", point_size = 0.5, alpha = 0.5) {
     # TO MAKE R CMD CHECK HAPPY
     frac_contamination <- pct_intronic <- NULL
 
@@ -1644,8 +1223,9 @@ plotCellProbabilityConditionalCbrb <- function(cell_features_result,
         return(ggplot() + theme_minimal())
     }
 
-    df <- cell_features_result[cell_features_result$frac_contamination >=
-        frac_contamination_threshold, ]
+    df <- cell_features_result[
+        cell_features_result$frac_contamination >= frac_contamination_threshold,
+    ]
 
     # Filter out NAs
     df <- df[!is.na(df$is_cell_prob), ]
