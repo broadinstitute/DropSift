@@ -53,10 +53,11 @@ jobs:
         with:
           extra-packages: any::rcmdcheck
           needs: check
+          dependencies: '"hard"'
 
       - uses: r-lib/actions/check-r-package@v2
         with:
           # R CMD check warnings have been cleaned up
           #error-on: '"error"'
           upload-snapshots: true
-          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf", "--no-check-remotes")'
+          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
