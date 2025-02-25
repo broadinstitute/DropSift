@@ -3,7 +3,8 @@
 \name{getCBRBArgs}
 \alias{getCBRBArgs}
 \alias{getCBRBArgs.SvmNucleusCaller}
-\title{Estimate CellBender remove-background arguments from an SvmNucleusCaller object}
+\title{Estimate CellBender remove-background arguments from an SvmNucleusCaller
+object}
 \usage{
 getCBRBArgs(svmNucleusCaller)
 

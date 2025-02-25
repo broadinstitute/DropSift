@@ -2,3 +2,9 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^LICENSE\.md$
+^doc$
+^Meta$
+^DropSift.iml$
+^check_package\.R$
+^\.idea$
+

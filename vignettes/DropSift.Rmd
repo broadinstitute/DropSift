@@ -3,7 +3,7 @@ title: "Nucleus Selection with DropSift"
 author: 
  - "James Nemesh"
  - "Alec Wysoker"
-date: "`r Sys.Date()`"
+date: "2025-02-24"
 output: 
     rmarkdown::html_vignette:
         toc: true
@@ -45,6 +45,7 @@ statistics (column name in parenthesis)
 
 ```{r, eval=TRUE, include=FALSE}
 data(svmNucleusCallerInputs)
+
 dropColumns <- c("num_transcripts", "num_reads", "frac_contamination")
 cell_features <- svmNucleusCallerInputs$
     cellFeatures[, setdiff(colnames(svmNucleusCallerInputs$cellFeatures), 

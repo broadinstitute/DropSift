@@ -45,7 +45,7 @@
 #' Shakir K, Nemesh J, Kashin S, Goldman M, Genovese G, Fritch H, Hogan M,
 #' Flowers K, Finn E, Vanderburg C, Ichihara K, Macosko E, McCarroll S (2024).
 #' *Population variability: Single nucleus RNAseq from postnatal human brain*
-#' [Dataset]. Available from:
+#' Dataset. Available from:
 #' [NEMO Archive](https://assets.nemoarchive.org/col-npe62xg).
 #'
 #' @examples

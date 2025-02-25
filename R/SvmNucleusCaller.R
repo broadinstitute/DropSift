@@ -161,8 +161,8 @@ validateCellFeatures <- function(cellFeatures, features) {
     requiredColumns <- setdiff(features, emptyGeneModuleScoreColName)
     requiredColumns <- c(requiredColumns, requiredNonSvmColNames)
     if (!is.null(requiredColumns)) {
-        missingColumns <- r
-        equiredColumns[!requiredColumns %in% colnames(cellFeatures)]
+        missingColumns <-
+            requiredColumns[!requiredColumns %in% colnames(cellFeatures)]
         if (length(missingColumns) > 0) {
             log_error("The cell features file is missing the following",
             "required columns: ", paste(missingColumns, collapse = ", "))
@@ -219,7 +219,8 @@ plotSvmNucleusCaller <- function(svmNucleusCaller) {
 #' `emptyGeneModuleScoreColName` will be added.
 #'
 #' @inheritParams SvmNucleusCaller
-#' @noRd
+#' @keywords internal
+#' @return The list of features to use to train the SVM
 configureFeatureColumns <- function(featureColumns,
     useCBRBFeatures,
     dgeMatrix) {

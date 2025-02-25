@@ -2,17 +2,19 @@ Package: DropSift
 Type: Package
 Title: Distinguish nuclei/cells from empty droplets
 Version: 0.99.0
-Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,e1071,logger,Seurat,data.table,methods,scales,rhdf5,rhdf5filters,gridGraphics
+Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,e1071,
+    logger,Seurat,data.table,methods,scales,rhdf5,gridGraphics,
+    cluster,stats,R.utils
 Authors@R: c(person("James", "Nemesh", email = "nemesh@broadinstitute.org", role = c("aut", "cre"), comment = c(ORCID = "0009-0000-1822-8255")),
              person("Alec", "Wysocker", email = "alecw@broadinstitute.org", role = c("aut")))
 Description: Distinguish nuclei/cells from empty droplets in a single nucleus/cell experiment.
 License: MIT + file LICENSE
 LazyData: FALSE
-LazyDataCompression: bzip2
 RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
-biocViews: SingleCell, RNASeq, Transcriptomics, Software, GeneExpression, QualityControl
+biocViews: SingleCell, RNASeq, Transcriptomics, Software, 
+    GeneExpression, QualityControl
 Suggests: 
     knitr,
     rmarkdown,

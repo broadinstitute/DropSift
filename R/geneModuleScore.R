@@ -20,7 +20,7 @@
 #' @return A list containing the cell features with the gene module scores and
 #'   QC plots. If there are no differentially expressed genes, the
 #'   empty_gene_module_score will be set to NA and the plots will be NULL.
-#' @import Seurat presto Matrix methods
+#' @import Seurat Matrix methods
 #' @noRd
 #'
 addGeneModules <- function(cell_features_labeled, dgeMatrix, numGenes = 100,
@@ -167,6 +167,7 @@ add_cell_metadata <- function(seurat_object, cell_features) {
 #' @noRd
 pseudobulkEmpties <- function(seurat_object, showPlot = FALSE,
 verbose = FALSE) {
+    training_identity<-NULL #for R CMD CHECK
     # Separate nuclei and empty droplets
     nuclei_cells <- subset(seurat_object,
         subset = training_identity == "nuclei")

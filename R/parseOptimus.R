@@ -177,8 +177,8 @@ load_h5ad_obs <- function(h5ad_file) {
 #' # Display output summary
 #' dim(dge)  # Check dimensions of the parsed expression matrix
 #' r$dge # The example DGE is 5 cells and 5 genes
-#' #This cell feature set is processed to include the features needed for
-#' DropSift.
+#' # This cell feature set is processed to include the
+#' # features needed for DropSift.
 #' head(cell_features)  # Preview the cell features dataframe.
 parseOptimusH5ad <- function(h5ad_file, min_transcripts = 20) {
     log_info(paste("Reading expression from Optimus h5ad file [", h5ad_file,

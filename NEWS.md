@@ -25,7 +25,3 @@
 - Ensured **Bioconductor compliance**, including:
   - Fully runnable examples.
   - Properly formatted documentation.
-
-## Future Roadmap
-- Testing on non-human organisms
-

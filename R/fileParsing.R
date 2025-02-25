@@ -211,6 +211,7 @@ fastReadBigGz <- function(inFile, ...) {
         stderr = FALSE) !=0
 
     if (retval != 0) {
+        cmd<-paste("gunzip -c", inFile, ">", t)
         stop(cmd, "failed with status", retval)
     }
     return(fastRead(t, ...))

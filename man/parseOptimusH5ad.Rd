@@ -32,7 +32,7 @@ cell_features <- r$cell_features
 # Display output summary
 dim(dge)  # Check dimensions of the parsed expression matrix
 r$dge # The example DGE is 5 cells and 5 genes
-#This cell feature set is processed to include the features needed for
-DropSift.
+# This cell feature set is processed to include the
+# features needed for DropSift.
 head(cell_features)  # Preview the cell features dataframe.
 }

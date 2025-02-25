@@ -15,7 +15,8 @@
 #' @export
 writeExampleSvmNucleusCallerInputs <- function(output_dir) {
     # Load example dataset
-    data(svmNucleusCallerInputs)
+    svmNucleusCallerInputs<-NULL # For R CMD CHECK
+    utils::data("svmNucleusCallerInputs", envir = environment())
 
     # Ensure the directory exists
     if (!dir.exists(output_dir)) {
@@ -70,7 +71,8 @@ writeExampleSvmNucleusCallerInputs <- function(output_dir) {
 #' @export
 writeExampleCellFeatures <- function(output_dir) {
     # Load example dataset
-    data(svmNucleusCallerInputs)
+    svmNucleusCallerInputs<-NULL # For R CMD CHECK
+    utils::data("svmNucleusCallerInputs", envir = environment())
 
     # Ensure the directory exists
     if (!dir.exists(output_dir)) {
@@ -102,7 +104,9 @@ writeExampleCellFeatures <- function(output_dir) {
 #' @export
 writeExampleDenseDGE <- function(output_dir) {
     # Load example dataset
-    data(svmNucleusCallerInputs)
+    svmNucleusCallerInputs<-NULL # For R CMD CHECK
+    utils::data("svmNucleusCallerInputs", envir = environment())
+
 
     # Ensure the directory exists
     if (!dir.exists(output_dir)) {
