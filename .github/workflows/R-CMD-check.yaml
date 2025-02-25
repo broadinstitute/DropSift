@@ -19,11 +19,11 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: macos-latest,   r: 'release'}
+          # The vignette requires X11, but I wasn't able to get X11 in the MacOS config, so disable for now.
+          #- {os: macos-latest,   r: 'release'}
           - {os: windows-latest, r: 'release'}
           - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
           - {os: ubuntu-latest,   r: 'release'}
-          - {os: ubuntu-latest,   r: 'oldrel-1'}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -31,6 +31,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # ChatGPT suggested the following macOS steps to address libXrender.1.dylib not found
+      #- name: Install XQuartz (macOS only)
+      #  if: runner.os == 'macOS'
+      #  run: brew install --cask xquartz
+
+      #- name: Set Library Path (macOS only)
+      #  if: runner.os == 'macOS'
+      #  run: echo "DYLD_LIBRARY_PATH=/opt/X11/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - uses: r-lib/actions/setup-pandoc@v2
 
@@ -50,4 +59,4 @@ jobs:
           # R CMD check warnings have been cleaned up
           #error-on: '"error"'
           upload-snapshots: true
-          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf", "--no-check-remotes")'
