@@ -6,7 +6,7 @@ Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,e1071,
     logger,Seurat,data.table,methods,scales,rhdf5,gridGraphics,
     cluster,stats,R.utils
 Authors@R: c(person("James", "Nemesh", email = "nemesh@broadinstitute.org", role = c("aut", "cre"), comment = c(ORCID = "0009-0000-1822-8255")),
-             person("Alec", "Wysocker", email = "alecw@broadinstitute.org", role = c("aut")))
+             person("Alec", "Wysoker", email = "alecw@broadinstitute.org", role = c("aut")))
 Description: Distinguish nuclei/cells from empty droplets in a single nucleus/cell experiment.
 License: MIT + file LICENSE
 LazyData: FALSE
