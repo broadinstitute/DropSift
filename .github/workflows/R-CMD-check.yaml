@@ -21,7 +21,8 @@ jobs:
         config:
           # The vignette requires X11, but I wasn't able to get X11 in the MacOS config, so disable for now.
           #- {os: macos-latest,   r: 'release'}
-          - {os: windows-latest, r: 'release'}
+          # doesn't work because we use gunzip
+          #- {os: windows-latest, r: 'release'}
           - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
           - {os: ubuntu-latest,   r: 'release'}
 
@@ -54,6 +55,7 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
           dependencies: '"hard"'
+          extra-packages: testthat
 
       - uses: r-lib/actions/check-r-package@v2
         with:
