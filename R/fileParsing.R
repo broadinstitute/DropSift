@@ -206,7 +206,7 @@ fastReadBigGz <- function(inFile, ...) {
     t <- tempfile(tmpdir = tmpDir, fileext = ".tsv")
     on.exit(unlink(t), add = TRUE)
 
-    # Run gunzip properly
+    # Run gunzip properly 
     retval <- system2("gunzip", args = c("-c", inFile), stdout = t,
         stderr = FALSE) !=0
 
