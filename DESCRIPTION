@@ -1,22 +1,27 @@
 Package: DropSift
 Type: Package
 Title: Distinguish nuclei/cells from empty droplets
-Version: 1.0
-Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,presto,e1071,logger,Seurat,data.table,cluster,methods,scales,rhdf5,gridGraphics
-Remotes: github::mojaveazure/seurat-disk, github::immunogenomics/presto
-Author: James Nemesh
-Maintainer: James Nemesh <nemesh@broadinstitute.org>
+Version: 0.99.0
+Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,e1071,
+    logger,Seurat,data.table,methods,scales,rhdf5,gridGraphics,
+    cluster,stats,R.utils
+Authors@R: c(person("James", "Nemesh", email = "nemesh@broadinstitute.org", role = c("aut", "cre"), comment = c(ORCID = "0009-0000-1822-8255")),
+             person("Alec", "Wysoker", email = "alecw@broadinstitute.org", role = c("aut")))
 Description: Distinguish nuclei/cells from empty droplets in a single nucleus/cell experiment.
 License: MIT + file LICENSE
-LazyData: TRUE
-LazyDataCompression: bzip2
+LazyData: FALSE
 RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
+biocViews: SingleCell, RNASeq, Transcriptomics, Software, 
+    GeneExpression, QualityControl
 Suggests: 
     knitr,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    presto
 VignetteBuilder: knitr
 Config/testthat/edition: 3
-Depends: R (>= 3.5.0)
+Depends: R (>= 4.4.0)
+URL: https://github.com/broadinstitute/DropSift
+BugReports: https://github.com/broadinstitute/DropSift/issues

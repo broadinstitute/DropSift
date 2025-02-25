@@ -16,30 +16,39 @@ SvmNucleusCaller(
 )
 }
 \arguments{
-\item{cellFeatures}{A data frame with columns: cell_barcode (unless dgeMatrix==NULL), num_reads, frac_contamination
-(unless !useCBRBFeatures) and any addtional columns that are specified in featureColumns.}
+\item{cellFeatures}{A data frame with columns: cell_barcode (unless
+dgeMatrix==NULL), num_reads, frac_contamination (unless !useCBRBFeatures)
+and any addtional columns that are specified in featureColumns.}
 
-\item{dgeMatrix}{A matrix of gene expression values, with rows corresponding to genes and columns corresponding to cells.
-The column names must match the cell_barcode column in cellFeatures.  This may be a sparse or dense matrix.  Set to
-NULL to suppress use of gene expression features.}
+\item{dgeMatrix}{A matrix of gene expression values, with rows corresponding
+to genes and columns corresponding to cells. The column names must match
+the cell_barcode column in cellFeatures.  This may be a sparse or dense
+matrix.  Set to NULL to suppress use of gene expression features.}
 
-\item{cellProbabilityThreshold}{The probability threshold for selecting cells.  This value scales from 0-1, with 1
-being extremely confident/stringent.  Set to null to use the SVM defaults (>0.5 = nuclei).
-This modifies plotting outputs and the output features file classification, but does not filter any
-cells from the output.}
+\item{cellProbabilityThreshold}{The probability threshold for selecting
+cells.  This value scales from 0-1, with 1 being extremely
+confident/stringent.  Set to null to use the SVM defaults (>0.5 = nuclei).
+This modifies plotting outputs and the output features file classification,
+but does not filter any cells from the output.}
 
-\item{maxUmisEmpty}{All cell barcodes with fewer than this number of UMIs are not considered for any aspects of
-nuclei selection.  It is assumed these cell barcodes have fewer UMIs than the ambient RNA.}
+\item{maxUmisEmpty}{All cell barcodes with fewer than this number of UMIs are
+not considered for any aspects of nuclei selection.  It is assumed these
+cell barcodes have fewer UMIs than the ambient RNA.}
 
-\item{featureColumns}{A list of features to use for cell selection.  If NULL, featureColumns are determined based
-on other parameters.  See \code{\link[=configureFeatureColumns]{configureFeatureColumns()}}.}
+\item{featureColumns}{A list of features to use for cell selection.  If NULL,
+featureColumns are determined based on other parameters.  See
+\code{\link[=configureFeatureColumns]{configureFeatureColumns()}}.}
 
-\item{forceTwoClusterSolution}{When true, the initialization of the SVM will attempt to find a solution with two clusters.
-In cases where an experiment is overloaded with nuclei, this may correct the initial set of nuclei and empty droplets selected.
-This argument is specific to the density-style selection of exemplars that is only applicable when useCBRBFeatures is false.}
+\item{forceTwoClusterSolution}{When true, the initialization of the SVM will
+attempt to find a solution with two clusters. In cases where an experiment
+is overloaded with nuclei, this may correct the initial set of nuclei and
+empty droplets selected. This argument is specific to the density-style
+selection of exemplars that is only applicable when useCBRBFeatures is
+false.}
 
-\item{useCBRBFeatures}{When true, the cell bender feature frac_contamination is used for cell selection.
-When false, these features are not used.  This modifies the featureColumns argument.}
+\item{useCBRBFeatures}{When true, the cell bender feature frac_contamination
+is used for cell selection. When false, these features are not used.  This
+modifies the featureColumns argument.}
 
 \item{datasetName}{A string to identify the dataset in plots.}
 }
@@ -47,7 +56,24 @@ When false, these features are not used.  This modifies the featureColumns argum
 An SvmNucleusCaller object
 }
 \description{
-Train an SVM to distinguish between nuclei and empty droplets.  It may also be used to estimate CellBender remove-background arguments.
+Train an SVM to distinguish between nuclei and empty droplets.  It may also
+be used to estimate CellBender remove-background arguments.
+}
+\examples{
+# Load example dataset
+data(svmNucleusCallerInputs)
+set.seed(1)  # Set seed for reproducibility
+
+# Create an SvmNucleusCaller object
+svmNucleusCaller <- SvmNucleusCaller(
+    cellFeatures = svmNucleusCallerInputs$cellFeatures,
+    dgeMatrix = svmNucleusCallerInputs$dgeMatrix,
+    datasetName = "example_dataset",
+    useCBRBFeatures = FALSE,
+    forceTwoClusterSolution = FALSE
+)
+# View summary
+print(svmNucleusCaller)
 }
 \seealso{
 \code{\link[=configureFeatureColumns]{configureFeatureColumns()}}

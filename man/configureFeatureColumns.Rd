@@ -2,27 +2,36 @@
 % Please edit documentation in R/SvmNucleusCaller.R
 \name{configureFeatureColumns}
 \alias{configureFeatureColumns}
-\title{Configure featureColumns argument to SvmNucleusCaller.}
+\title{Configure featureColumns argument for \code{SvmNucleusCaller}}
 \usage{
 configureFeatureColumns(featureColumns, useCBRBFeatures, dgeMatrix)
 }
 \arguments{
-\item{featureColumns}{A list of features to use for cell selection.  If NULL, featureColumns are determined based
-on other parameters.  See \code{\link[=configureFeatureColumns]{configureFeatureColumns()}}.}
+\item{featureColumns}{A list of features to use for cell selection.  If NULL,
+featureColumns are determined based on other parameters.  See
+\code{\link[=configureFeatureColumns]{configureFeatureColumns()}}.}
 
-\item{useCBRBFeatures}{When true, the cell bender feature frac_contamination is used for cell selection.
-When false, these features are not used.  This modifies the featureColumns argument.}
+\item{useCBRBFeatures}{When true, the cell bender feature frac_contamination
+is used for cell selection. When false, these features are not used.  This
+modifies the featureColumns argument.}
 
-\item{dgeMatrix}{A matrix of gene expression values, with rows corresponding to genes and columns corresponding to cells.
-The column names must match the cell_barcode column in cellFeatures.  This may be a sparse or dense matrix.  Set to
-NULL to suppress use of gene expression features.}
+\item{dgeMatrix}{A matrix of gene expression values, with rows corresponding
+to genes and columns corresponding to cells. The column names must match
+the cell_barcode column in cellFeatures.  This may be a sparse or dense
+matrix.  Set to NULL to suppress use of gene expression features.}
+}
+\value{
+The list of features to use to train the SVM
 }
 \description{
 Typically, the user will not need to call this function directly.
 }
 \details{
-If featureColumns is not NULL, assume the user has specified the features they want to use.  If featureColumns is NULL,
-the feature columns will be c("num_transcripts", "pct_intronic", "pct_mt").  If useCBRBFeatures is true,
-"frac_contamination" will be added to the featureColumns.  If dgeMatrix is not NULL,
-"empty_gene_module_score" will be added.
+If \code{featureColumns} is not \code{NULL}, the user has explicitly specified the
+features to use. If \code{featureColumns} is \code{NULL}, the feature columns will be
+set to the default values stored in \code{defaultFeatureColumnsStringRep}.
+If \code{useCBRBFeatures} is \code{TRUE}, the feature column defined by
+\code{contaminationColName} will be added. If \code{dgeMatrix} is not \code{NULL},
+\code{emptyGeneModuleScoreColName} will be added.
 }
+\keyword{internal}

@@ -6,7 +6,8 @@ test_that("CBRB argument estimation", {
         svmNucleusCallerInputs$dgeMatrix,
         datasetName = "v3_Bamboo_18d_10X_RNAseq_Optiprep8000_CaH_17k_rxn1",
         useCBRBFeatures = FALSE,
-        forceTwoClusterSolution = TRUE)
+        forceTwoClusterSolution = FALSE)
     cbrbArgs = getCBRBArgs(svmNucleusCaller)
-    expect_equal(cbrbArgs, list(total_droplets_included=3886, expected_cells=682))
+    expect_equal(cbrbArgs, list(total_droplets_included=2195,
+        expected_cells=376))
 })
