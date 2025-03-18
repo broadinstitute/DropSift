@@ -7,14 +7,8 @@ nucleus caller for sn/snRNA sequence data
 To install from GitHub:
 
 ```         
-remotes::install_github("broadinstitute/DropSift")
-```
-
-To install from Bioconductor:
-
-```         
-if (!require("BiocManager")) {
-  install.packages("BiocManager")
+if (!require("remotes")) {
+  install.packages("remotes")
 }
-BiocManager::install("DropSift")
+remotes::install_github("broadinstitute/DropSift")
 ```
