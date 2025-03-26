@@ -857,7 +857,7 @@ custom_theme <- function(title_size = 8, axis_title_size = 6,
 getCellSelectionPlotTitle <- function(cell_features_result, strTitlePrefix = "",
     transcriptFeature = "num_transcripts") {
     selected <- cell_features_result[which(cell_features_result$is_cell ==
-        TRUE), ]
+        TRUE & cell_features_result[[transcriptFeature]] > 0), ]
 
     numSTAMPs <- dim(selected)[1]
     readsPerUMI <- NA
@@ -1069,7 +1069,8 @@ plotSelectedCellsSmoothScatter <- function(cell_features, strTitlePrefix = "",
 
     strTitle <- getCellSelectionPlotTitle(cell_features_filtered,
         strTitlePrefix = strTitlePrefix, transcriptFeature = transcriptFeature)
-    df <- cell_features_filtered[cell_features_filtered$is_cell ==TRUE, ]
+    df <- cell_features_filtered[cell_features_filtered$is_cell ==TRUE &
+                                     cell_features_filtered[[transcriptFeature]] > 0, ]
     umi_min_threshold <- min(df[[transcriptFeature]])
     intronic_min_threshold <- min(df[["pct_intronic"]])
 
