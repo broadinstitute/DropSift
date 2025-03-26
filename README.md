@@ -2,7 +2,7 @@
 
 **DropSift** is a nucleus caller for single-nucleus and single-nucleus RNA sequencing (sn/snRNA-seq) data.
 
-This tool distinguishes between nuclei and empty droplets by combining summary metrics of cell barcodes—such as total UMI counts, fraction of intronic reads, and percentage of mitochondrial reads.  It additionally leverages gene expression to learn signatures of empty droplet expression, and can leverage cellbender remove background outputs. DropSift uses these features to robustly identify true nuclei across a variety of datasets.
+This tool distinguishes between nuclei and empty droplets by combining summary metrics of cell barcodes—such as total UMI counts, fraction of intronic reads, and percentage of mitochondrial reads. It also incorporates gene expression to learn signatures characteristic of empty droplets, and can optionally make use of CellBender’s [remove-background](https://github.com/broadinstitute/CellBender) outputs. DropSift uses these features to robustly identify true nuclei across a variety of datasets.
 
 ## Installation
 
