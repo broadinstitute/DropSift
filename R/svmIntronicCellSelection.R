@@ -631,7 +631,7 @@ runSVM <- function(cell_features_labeled, features, bounds_empty,
     # Extract the probabilities
     probabilities <- attr(predictions, "probabilities")
     # Combine predictions and confidence into a dataframe
-    results_df <- data.frame(is_cell = predictions,
+    results_df <- data.frame(is_cell = as.logical(predictions),
         is_cell_prob = probabilities[,"TRUE"])
     # optionally override cell probability
     if (!is.null(cellProbabilityThreshold)) {
