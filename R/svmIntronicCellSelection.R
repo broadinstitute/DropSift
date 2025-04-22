@@ -192,7 +192,8 @@ callByIntronicSVM <- function(dataset_name, cell_features, dgeMatrix,
     trainingData <- svm_result$trainingData
 
     selectionPlots <- createSelectionVisualization(cell_features_result,
-        bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name)
+        bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name,
+        cellProbabilityThreshold)
     feature_plot <- plotScaledTrainingDataFeatures(
         svm_result$trainingData[, c(features, "training_label_is_cell")]
     )
@@ -215,7 +216,7 @@ validateFeaturePresence <- function(cell_features, features) {
 
 
 createSelectionVisualization <- function(cell_features_labeled, bounds_empty,
-    bounds_non_empty, useCellBenderFeatures, dataset_name) {
+    bounds_non_empty, useCellBenderFeatures, dataset_name, cellProbabilityThreshold) {
     p1 <- plotExpressionVsIntronic(cell_features_labeled,
         title = "All cell barcodes",
         useCellBenderFeatures = useCellBenderFeatures)
@@ -225,7 +226,7 @@ createSelectionVisualization <- function(cell_features_labeled, bounds_empty,
         bounds_non_empty))
 
     p3 <- plotSelectedCells(cell_features_labeled)
-    p4 <- plotCellProbabilities(cell_features_labeled,
+    p4 <- plotCellProbabilities(cell_features_labeled, cellProbabilityThreshold,
         strTitle = "Cell Probability")
 
     ambientPeak <- round(median(cell_features_labeled[
@@ -1127,14 +1128,23 @@ plotScaledTrainingDataFeatures <- function(trainingData) {
     return(p)
 }
 
+DefaultCellProbabilityThreshold=0.5
 
-plotCellProbabilities <- function(cell_features,
+plotCellProbabilities <- function(cell_features, cellProbabilityThreshold,
     strTitle = "Nuclei Probability") {
 
-    df <- cell_features[which(cell_features$is_cell_prob >= 0.5), ]
+    if (is.null(cellProbabilityThreshold)) {
+        cellProbabilityThreshold <- DefaultCellProbabilityThreshold
+    }
+    df <- cell_features[which(cell_features$is_cell_prob >= cellProbabilityThreshold), ]
 
-    breaks <- c(0.5, 0.6, 0.7, 0.8, 0.9, 1)
-    colors <- c("red", "purple", "orange", "blue", "green")
+    breaks <- seq(from=0.1, to=1, by=0.1)
+    colors <- c(sapply(1:4, function(v) paste0("deeppink", v)), "red", "purple", "orange", "blue", "green")
+    # If cellProbabilityThreshold is not a multiple of 0.1, include the break below it
+    probabilityFloor = floor(cellProbabilityThreshold * 10) / 10
+    i = which(abs(breaks - probabilityFloor) < 0.001)
+    breaks = breaks[i: length(breaks) ] # remove breaks below the threshold
+    colors = colors[i: length(colors) ] # remove colors below the threshold
 
     # Assign bins to is_cell_prob
     df$is_cell_prob_bin <-
