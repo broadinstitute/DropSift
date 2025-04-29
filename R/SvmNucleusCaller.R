@@ -116,6 +116,15 @@ SvmNucleusCaller <- function(cellFeatures, dgeMatrix,
     stopifnot(is.character(datasetName))
     stopifnot(is.logical(useCBRBFeatures))
 
+    if (!is.null(dgeMatrix)) {
+        log_info(sprintf("%d cell barcodes overlap between cellFeatures and dgeMatrix",
+            length(intersect(cellFeatures$cell_barcode,
+                colnames(dgeMatrix)))))
+        stopifnot(nrow(dgeMatrix) > 0)
+        stopifnot(ncol(dgeMatrix) > 0)
+        stopifnot(all(colnames(dgeMatrix) %in% cellFeatures$cell_barcode))
+    }
+
     # optionally enhance the cell features data frame with additional
     # columns if they are missing and can be computed.
     cellFeatures <- enhanceCelLFeatures(cellFeatures,
