@@ -12,6 +12,7 @@ SvmNucleusCaller(
   featureColumns = NULL,
   forceTwoClusterSolution = FALSE,
   useCBRBFeatures = TRUE,
+  useCBRBInitialization = useCBRBFeatures,
   datasetName = ""
 )
 }
@@ -50,6 +51,11 @@ false.}
 is used for cell selection. When false, these features are not used.  This
 modifies the featureColumns argument.}
 
+\item{useCBRBInitialization}{When true, the cellbender feature
+frac_contamination is used to select exemplar nuclei and empty droplets.
+This option can be false and useCBRBFeatures to force DropSift to use the
+non-CBRB initialization but still include CBRB in the model features.}
+
 \item{datasetName}{A string to identify the dataset in plots.}
 }
 \value{
@@ -70,6 +76,7 @@ svmNucleusCaller <- SvmNucleusCaller(
     dgeMatrix = svmNucleusCallerInputs$dgeMatrix,
     datasetName = "example_dataset",
     useCBRBFeatures = FALSE,
+    useCBRBInitialization=FALSE,
     forceTwoClusterSolution = FALSE
 )
 # View summary
