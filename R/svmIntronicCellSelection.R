@@ -42,6 +42,10 @@ random.seed <- 1
 #' @param useCBRBFeatures When true, the cell bender feature frac_contamination
 #'   is used for cell selection. When false, these features are not used.  This
 #'   modifies the features argument.
+#' @param useCBRBInitialization When true, the cellbender feature
+#' frac_contamination is used to select exemplar nuclei and empty droplets.
+#' This option can be false and useCBRBFeatures to force DropSift to use the
+#' non-CBRB initialization but still include CBRB in the model features.
 #' @param forceTwoClusterSolution When true, the initialization of the SVM will
 #'   attempt to find a solution with two clusters. In cases where an experiment
 #'   is overloaded with nuclei, this may correct the initial set of nuclei and
@@ -97,6 +101,7 @@ random.seed <- 1
 runIntronicSVM <- function(datasetName, cellFeaturesFile = NULL,
     dgeMatrixFile = NULL, optimusH5File = NULL, cellProbabilityThreshold = NULL,
     max_umis_empty = 50, features = NULL, useCBRBFeatures = TRUE,
+    useCBRBInitialization=useCBRBFeatures,
     forceTwoClusterSolution = FALSE, outPDF = NULL, outFeaturesFile = NULL,
     outCellBenderInitialParameters = NULL) {
 
@@ -156,7 +161,7 @@ runIntronicSVM <- function(datasetName, cellFeaturesFile = NULL,
 #' @noRd
 callByIntronicSVM <- function(dataset_name, cell_features, dgeMatrix,
     cellProbabilityThreshold = NULL, max_umis_empty = 50,
-    features, forceTwoClusterSolution = FALSE) {
+    features, useCBRBInitialization=TRUE, forceTwoClusterSolution = FALSE) {
 
     validateFeaturePresence(cell_features, features)
     maxContaminationThreshold <- 0.1  # CBRB-specific contamination threshold
@@ -166,9 +171,11 @@ callByIntronicSVM <- function(dataset_name, cell_features, dgeMatrix,
     rownames(cell_features) <- cell_features$cell_barcode
     cell_features$cell_barcode <- NULL
     useCellBenderFeatures <- "frac_contamination" %in% features
-
+    #don't use useCBRBInitialization without cellbender features
+    if (!useCellBenderFeatures)
+        useCBRBInitialization=FALSE
     allBounds <- findTrainingDataBounds(cell_features, max_umis_empty,
-        useCellBenderFeatures = useCellBenderFeatures,
+        useCellBenderFeatures = useCBRBInitialization,
         forceTwoClusterSolution = forceTwoClusterSolution)
     bounds_empty <- allBounds$bounds_empty
     bounds_non_empty <- allBounds$bounds_non_empty
@@ -192,8 +199,7 @@ callByIntronicSVM <- function(dataset_name, cell_features, dgeMatrix,
     trainingData <- svm_result$trainingData
 
     selectionPlots <- createSelectionVisualization(cell_features_result,
-        bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name,
-        cellProbabilityThreshold)
+        bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name)
     feature_plot <- plotScaledTrainingDataFeatures(
         svm_result$trainingData[, c(features, "training_label_is_cell")]
     )
@@ -216,7 +222,7 @@ validateFeaturePresence <- function(cell_features, features) {
 
 
 createSelectionVisualization <- function(cell_features_labeled, bounds_empty,
-    bounds_non_empty, useCellBenderFeatures, dataset_name, cellProbabilityThreshold) {
+    bounds_non_empty, useCellBenderFeatures, dataset_name) {
     p1 <- plotExpressionVsIntronic(cell_features_labeled,
         title = "All cell barcodes",
         useCellBenderFeatures = useCellBenderFeatures)
@@ -226,7 +232,7 @@ createSelectionVisualization <- function(cell_features_labeled, bounds_empty,
         bounds_non_empty))
 
     p3 <- plotSelectedCells(cell_features_labeled)
-    p4 <- plotCellProbabilities(cell_features_labeled, cellProbabilityThreshold,
+    p4 <- plotCellProbabilities(cell_features_labeled,
         strTitle = "Cell Probability")
 
     ambientPeak <- round(median(cell_features_labeled[
@@ -632,7 +638,7 @@ runSVM <- function(cell_features_labeled, features, bounds_empty,
     # Extract the probabilities
     probabilities <- attr(predictions, "probabilities")
     # Combine predictions and confidence into a dataframe
-    results_df <- data.frame(is_cell = as.logical(predictions),
+    results_df <- data.frame(is_cell = predictions,
         is_cell_prob = probabilities[,"TRUE"])
     # optionally override cell probability
     if (!is.null(cellProbabilityThreshold)) {
@@ -1128,23 +1134,14 @@ plotScaledTrainingDataFeatures <- function(trainingData) {
     return(p)
 }
 
-DefaultCellProbabilityThreshold=0.5
 
-plotCellProbabilities <- function(cell_features, cellProbabilityThreshold,
+plotCellProbabilities <- function(cell_features,
     strTitle = "Nuclei Probability") {
 
-    if (is.null(cellProbabilityThreshold)) {
-        cellProbabilityThreshold <- DefaultCellProbabilityThreshold
-    }
-    df <- cell_features[which(cell_features$is_cell_prob >= cellProbabilityThreshold), ]
+    df <- cell_features[which(cell_features$is_cell_prob >= 0.5), ]
 
-    breaks <- seq(from=0.1, to=1, by=0.1)
-    colors <- c(sapply(1:4, function(v) paste0("deeppink", v)), "red", "purple", "orange", "blue", "green")
-    # If cellProbabilityThreshold is not a multiple of 0.1, include the break below it
-    probabilityFloor = floor(cellProbabilityThreshold * 10) / 10
-    i = which(abs(breaks - probabilityFloor) < 0.001)
-    breaks = breaks[i: length(breaks) ] # remove breaks below the threshold
-    colors = colors[i: length(colors) ] # remove colors below the threshold
+    breaks <- c(0.5, 0.6, 0.7, 0.8, 0.9, 1)
+    colors <- c("red", "purple", "orange", "blue", "green")
 
     # Assign bins to is_cell_prob
     df$is_cell_prob_bin <-

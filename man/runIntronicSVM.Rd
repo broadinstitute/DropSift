@@ -13,6 +13,7 @@ runIntronicSVM(
   max_umis_empty = 50,
   features = NULL,
   useCBRBFeatures = TRUE,
+  useCBRBInitialization = useCBRBFeatures,
   forceTwoClusterSolution = FALSE,
   outPDF = NULL,
   outFeaturesFile = NULL,
@@ -58,6 +59,11 @@ generated from the gene expression data.}
 \item{useCBRBFeatures}{When true, the cell bender feature frac_contamination
 is used for cell selection. When false, these features are not used.  This
 modifies the features argument.}
+
+\item{useCBRBInitialization}{When true, the cellbender feature
+frac_contamination is used to select exemplar nuclei and empty droplets.
+This option can be false and useCBRBFeatures to force DropSift to use the
+non-CBRB initialization but still include CBRB in the model features.}
 
 \item{forceTwoClusterSolution}{When true, the initialization of the SVM will
 attempt to find a solution with two clusters. In cases where an experiment

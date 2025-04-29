@@ -20,8 +20,9 @@
 
 # constructor, only used internally
 new_SvmNucleusCaller <- function(results, cellProbabilityThreshold,
-    maxUmisEmpty, forceTwoClusterSolution) {
+    maxUmisEmpty, forceTwoClusterSolution, useCBRBInitialization) {
     stopifnot(is.list(results))
+    results$useCBRBInitialization <- useCBRBInitialization
     results$cellProbabilityThreshold <- cellProbabilityThreshold
     results$maxUmisEmpty <- maxUmisEmpty
     results$forceTwoClusterSolution <- forceTwoClusterSolution
@@ -65,6 +66,10 @@ contaminationColName <- "frac_contamination"
 #' @param useCBRBFeatures When true, the cell bender feature frac_contamination
 #'   is used for cell selection. When false, these features are not used.  This
 #'   modifies the featureColumns argument.
+#' @param useCBRBInitialization When true, the cellbender feature
+#'   frac_contamination is used to select exemplar nuclei and empty droplets.
+#'   This option can be false and useCBRBFeatures to force DropSift to use the
+#'   non-CBRB initialization but still include CBRB in the model features.
 #' @param datasetName A string to identify the dataset in plots.
 #' @return An SvmNucleusCaller object
 #' @seealso [configureFeatureColumns()]
@@ -81,6 +86,7 @@ contaminationColName <- "frac_contamination"
 #'     dgeMatrix = svmNucleusCallerInputs$dgeMatrix,
 #'     datasetName = "example_dataset",
 #'     useCBRBFeatures = FALSE,
+#'     useCBRBInitialization=FALSE,
 #'     forceTwoClusterSolution = FALSE
 #' )
 #' # View summary
@@ -88,7 +94,16 @@ contaminationColName <- "frac_contamination"
 
 SvmNucleusCaller <- function(cellFeatures, dgeMatrix,
     cellProbabilityThreshold = NULL, maxUmisEmpty = 50, featureColumns = NULL,
-    forceTwoClusterSolution = FALSE, useCBRBFeatures = TRUE, datasetName = "") {
+    forceTwoClusterSolution = FALSE, useCBRBFeatures = TRUE,
+    useCBRBInitialization=useCBRBFeatures, datasetName = "") {
+
+    if (useCBRBInitialization==TRUE & useCBRBFeatures==FALSE)
+        stop ("Can't use CBRB for initialization of CBCB without features")
+
+    if (useCBRBFeatures==TRUE & useCBRBInitialization==FALSE) {
+        msg="Using non-CBRB initialization and CBRB features in model training"
+        log_info(msg)
+    }
 
     stopifnot(is.data.frame(cellFeatures))
     stopifnot(is.null(dgeMatrix) || is.matrix(dgeMatrix) || is(dgeMatrix,
@@ -100,15 +115,6 @@ SvmNucleusCaller <- function(cellFeatures, dgeMatrix,
     stopifnot(is.logical(forceTwoClusterSolution))
     stopifnot(is.character(datasetName))
     stopifnot(is.logical(useCBRBFeatures))
-
-    if (!is.null(dgeMatrix)) {
-        log_info(sprintf("%d cell barcodes overlap between cellFeatures and dgeMatrix",
-            length(intersect(cellFeatures$cell_barcode,
-                colnames(dgeMatrix)))))
-        stopifnot(nrow(dgeMatrix) > 0)
-        stopifnot(ncol(dgeMatrix) > 0)
-        stopifnot(all(colnames(dgeMatrix) %in% cellFeatures$cell_barcode))
-    }
 
     # optionally enhance the cell features data frame with additional
     # columns if they are missing and can be computed.
@@ -130,6 +136,7 @@ SvmNucleusCaller <- function(cellFeatures, dgeMatrix,
         cell_features = cellFeatures, dgeMatrix = dgeMatrix,
         cellProbabilityThreshold = cellProbabilityThreshold,
         max_umis_empty = maxUmisEmpty, features = featureColumns,
+        useCBRBInitialization=useCBRBInitialization,
         forceTwoClusterSolution = forceTwoClusterSolution)
 
     results$cell_features <- data.frame(
@@ -137,7 +144,7 @@ SvmNucleusCaller <- function(cellFeatures, dgeMatrix,
         results$cell_features
     )
     return(new_SvmNucleusCaller(results, cellProbabilityThreshold, maxUmisEmpty,
-        forceTwoClusterSolution))
+        forceTwoClusterSolution, useCBRBInitialization))
 }
 
 #' Optionally add extra cell features to the cell_features data frame if they
