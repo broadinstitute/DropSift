@@ -921,7 +921,7 @@ plotExpressionVsIntronic <- function(cell_features, densityCenters = NULL,
 
     p <- ggplot(cell_features, aes(x = log10(num_transcripts),
         y = pct_intronic, color = frac_contamination)) +
-        ggrastr::rasterize(geom_point(size = point_size, alpha=alpha),dpi=900) +
+        ggrastr::rasterize(geom_point(size = point_size, alpha=alpha),dpi=300) +
         scale_color_gradientn(
             colors = c("light blue", "blue", "red"), values = c(0,0.5,1)) +
         labs(
@@ -938,10 +938,10 @@ plotExpressionVsIntronic <- function(cell_features, densityCenters = NULL,
         p <- p +
           ggrastr::rasterize(geom_point(data = data.frame(x = log10(densityCenters$empty[1]),
                 y = densityCenters$empty[2]),
-                aes(x = x, y = y), color = "red", size = 3), dpi=900) +
+                aes(x = x, y = y), color = "red", size = 3), dpi=300) +
           ggrastr::rasterize(geom_point(data = data.frame(x = log10(densityCenters$cell[1]),
                 y = densityCenters$cell[2]),
-                aes(x = x, y = y), color = "red", size = 3), dpi=900)
+                aes(x = x, y = y), color = "red", size = 3), dpi=300)
     }
 
     if (!is.null(intronicThreshold)) {
@@ -1014,7 +1014,7 @@ plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
 
     p <- ggplot(cell_features_result, aes(x = log10(num_transcripts),
         y = pct_intronic, color = is_cell)) +
-        ggrastr::rasterize(geom_point(size = size, alpha=alpha),dpi=900) +
+        ggrastr::rasterize(geom_point(size = size, alpha=alpha),dpi=300) +
         labs(
             x = "log10(UMI)",
             y = "% Intronic",
@@ -1154,7 +1154,7 @@ plotCellProbabilities <- function(cell_features,
 
     p <- ggplot(df, aes(x = log10(num_transcripts), y = pct_intronic,
         color = is_cell_prob_bin)) +
-        ggrastr::rasterize(geom_point(size = 0.5, alpha=0.25), dpi=900) +
+        ggrastr::rasterize(geom_point(size = 0.5, alpha=0.25), dpi=300) +
         labs(
             x = "log10(UMI)",
             y = "% Intronic",
@@ -1212,7 +1212,7 @@ plotModuleVsFracContam <- function(cell_features,
     p <- ggplot(cell_features, aes(x = frac_contamination, y=get(moduleName),
         color = pct_intronic)) +
         ggrastr::rasterize(geom_point(size = point_size, alpha = alpha),
-        dpi=900) +
+        dpi=300) +
         labs(
             x = "Fraction Contamination",
             y = moduleName,
