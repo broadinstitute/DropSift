@@ -936,12 +936,12 @@ plotExpressionVsIntronic <- function(cell_features, densityCenters = NULL,
 
     if (!is.null(densityCenters)) {
         p <- p +
-            geom_point(data = data.frame(x = log10(densityCenters$empty[1]),
+          ggrastr::rasterize(geom_point(data = data.frame(x = log10(densityCenters$empty[1]),
                 y = densityCenters$empty[2]),
-                aes(x = x, y = y), color = "red", size = 3) +
-            geom_point(data = data.frame(x = log10(densityCenters$cell[1]),
+                aes(x = x, y = y), color = "red", size = 3), dpi=900) +
+          ggrastr::rasterize(geom_point(data = data.frame(x = log10(densityCenters$cell[1]),
                 y = densityCenters$cell[2]),
-                aes(x = x, y = y), color = "red", size = 3)
+                aes(x = x, y = y), color = "red", size = 3), dpi=900)
     }
 
     if (!is.null(intronicThreshold)) {
