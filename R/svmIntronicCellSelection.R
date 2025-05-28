@@ -874,6 +874,8 @@ getCellSelectionPlotTitle <- function(cell_features_result, strTitlePrefix = "",
     minIntronic <- min(selected$pct_intronic)
     comma_formatter <- scales::label_comma()
 
+    readsPerUMI = mean(selected$num_reads/selected[[transcriptFeature]])
+
     strTitle <- sprintf("%s, intronic>=%.2f\n%s Nuclei, %d+ UMIs, medUMIs %s",
         strTitlePrefix, minIntronic, comma_formatter(numSTAMPs), minNumUmis,
         comma_formatter(medianUMI))
