@@ -290,8 +290,30 @@ parseInputs <- function(cellFeaturesFile = NULL, dgeMatrixFile = NULL,
 
     cell_features <- readCellFeatures(cellFeaturesFile)
     dgeMatrix <- readDgeFile(dgeMatrixFile, cell_features)
+
+    # filter out cell barcodes with expression values of 0.
+    r= filterZeroExpressionBarcodes(cell_features, dgeMatrix)
+    cell_features <- r$cell_features
+    dgeMatrix <- r$dgeMatrix
+
     result <- list(cell_features = cell_features, dgeMatrix = dgeMatrix)
     return(result)
+}
+
+filterZeroExpressionBarcodes<-function(cell_features, dgeMatrix) {
+    # filter out cell barcodes with no expression
+    idx <- which(Matrix::colSums(dgeMatrix) == 0)
+    if (length(idx) > 0) {
+        n=min(5, length(idx))
+        log_warn("Removing cell barcodes with no expression ",
+                "first 5 examples of [", length(idx), "] ",
+                 paste(head (colnames(dgeMatrix)[idx], n=n), collapse=","))
+        dgeMatrix <- dgeMatrix[, -idx]
+        cell_features <-
+            cell_features[cell_features$cell_barcode %in% colnames(dgeMatrix), ]
+    }
+
+    return(list(cell_features=cell_features, dgeMatrix=dgeMatrix))
 }
 
 ###############################################
