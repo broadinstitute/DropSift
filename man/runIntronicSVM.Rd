@@ -17,7 +17,8 @@ runIntronicSVM(
   forceTwoClusterSolution = FALSE,
   outPDF = NULL,
   outFeaturesFile = NULL,
-  outCellBenderInitialParameters = NULL
+  outCellBenderInitialParameters = NULL,
+  random.seed = NA
 )
 }
 \arguments{
@@ -82,6 +83,8 @@ barcodes were used for training.}
 parameter is not null, the SVM is trained without cellbenber features, and
 the parameters expected_cells and total_droplets_included are
 estimated and written to this file.}
+
+\item{random.seed}{The random seed to use for reproducibility.  Default is NA, which means no seed is set.}
 }
 \value{
 This function does not return a value. Instead, the results are
@@ -93,8 +96,9 @@ A convenience method for calling cells using an SVM trained on cell summary
 features.
 }
 \details{
-Please set a random seed for reproducibility, e.g., \code{set.seed(1)}. This
-ensures that the SVM initialization and training are consistent across runs.
+Please set a random seed for reproducibility, e.g., \code{set.seed(1)} or by
+passing a value to random.seed parameter. This ensures that the SVM
+initialization and training are consistent across runs.
 }
 \examples{
 # Create a temporary directory for test data
