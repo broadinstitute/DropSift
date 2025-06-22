@@ -1,15 +1,15 @@
 # Some global parameters
 MIN_UMIs_PER_STAMP <- 20  # what's worth even including in analysis
 log10_UMI_AXIS_RANGE_NEW <- c(log10(MIN_UMIs_PER_STAMP), 6)  # for plotting
-random.seed <- 1
 
 #' Call nuclei using an SVM trained on cell summary features.
 #'
 #' A convenience method for calling cells using an SVM trained on cell summary
 #' features.
 #'
-#' Please set a random seed for reproducibility, e.g., `set.seed(1)`. This
-#' ensures that the SVM initialization and training are consistent across runs.
+#' Please set a random seed for reproducibility, e.g., `set.seed(1)` or by
+#' passing a value to random.seed parameter. This ensures that the SVM
+#' initialization and training are consistent across runs.
 #'
 #' @param datasetName The name of the dataset.  Used for plotting.  Useful to
 #'   use a unique experimental identifier (UEI) if available.
@@ -60,6 +60,7 @@ random.seed <- 1
 #'   parameter is not null, the SVM is trained without cellbenber features, and
 #'   the parameters expected_cells and total_droplets_included are
 #' estimated and written to this file.
+#' @param random.seed The random seed to use for reproducibility.  Default is NA, which means no seed is set.
 #' @return This function does not return a value. Instead, the results are
 #'   written to the specified output files (`outPDF`, `outFeaturesFile`, and
 #'   `outCellBenderInitialParameters`).
@@ -87,7 +88,8 @@ random.seed <- 1
 #'    useCBRBFeatures = FALSE,
 #'    forceTwoClusterSolution = FALSE,
 #'    outPDF = out_pdf_file,
-#'    outFeaturesFile = out_features_file
+#'    outFeaturesFile = out_features_file,
+#'    random.seed=1
 #')
 #'
 #' # Check that output files were generated
@@ -103,7 +105,11 @@ runIntronicSVM <- function(datasetName, cellFeaturesFile = NULL,
     max_umis_empty = 50, features = NULL, useCBRBFeatures = TRUE,
     useCBRBInitialization=useCBRBFeatures,
     forceTwoClusterSolution = FALSE, outPDF = NULL, outFeaturesFile = NULL,
-    outCellBenderInitialParameters = NULL) {
+    outCellBenderInitialParameters = NULL,
+    random.seed=NA) {
+    if (!is.na(random.seed)) {
+        set.seed(random.seed)
+    }
 
     # parse and validate inputs.
     r <- parseInputs(cellFeaturesFile = cellFeaturesFile,
