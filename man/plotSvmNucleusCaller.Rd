@@ -21,22 +21,22 @@ Send a standard set of plots (3 pages) to the current graphics device
 \examples{
 # Load example dataset
 data(svmNucleusCallerInputs)
-set.seed(1)  # Set seed for reproducibility
+set.seed(1) # Set seed for reproducibility
 
 # Create an SvmNucleusCaller object
 svmNucleusCaller <- SvmNucleusCaller(
-    cellFeatures = svmNucleusCallerInputs$cellFeatures,
-    dgeMatrix = svmNucleusCallerInputs$dgeMatrix,
-    datasetName = "example_dataset",
-    useCBRBFeatures = FALSE,
-    forceTwoClusterSolution = FALSE
+  cellFeatures = svmNucleusCallerInputs$cellFeatures,
+  dgeMatrix = svmNucleusCallerInputs$dgeMatrix,
+  datasetName = "example_dataset",
+  useCBRBFeatures = FALSE,
+  forceTwoClusterSolution = FALSE
 )
 
 # View summary
 print(svmNucleusCaller)
 
 # Plot the results, directing the outputs to a temp file.
-outFile=tempfile(fileext=".pdf")
+outFile <- tempfile(fileext = ".pdf")
 pdf(outFile)
 plotSvmNucleusCaller(svmNucleusCaller)
 dev.off()

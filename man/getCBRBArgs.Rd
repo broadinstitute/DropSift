@@ -23,16 +23,16 @@ After running the SVM with useCBRBFeatures=FALSE, get an estimate for
 arguments.
 }
 \examples{
-#Load up the example dataset and run the SVM.
-#This mirrors the included unit test.
-data(svmNucleusCallerInputs)  # Load example dataset
-set.seed(1)  # Set seed for reproducibility
+# Load up the example dataset and run the SVM.
+# This mirrors the included unit test.
+data(svmNucleusCallerInputs) # Load example dataset
+set.seed(1) # Set seed for reproducibility
 svmNucleusCaller <- SvmNucleusCaller(
-    svmNucleusCallerInputs$cellFeatures,
-    svmNucleusCallerInputs$dgeMatrix,
-    datasetName = "example_dataset",
-    useCBRBFeatures = FALSE,
-    forceTwoClusterSolution = FALSE
+  svmNucleusCallerInputs$cellFeatures,
+  svmNucleusCallerInputs$dgeMatrix,
+  datasetName = "example_dataset",
+  useCBRBFeatures = FALSE,
+  forceTwoClusterSolution = FALSE
 )
 
 cbrbArgs <- getCBRBArgs(svmNucleusCaller)

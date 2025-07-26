@@ -24,15 +24,17 @@ needed for nuclei selection is calculated / extracted from the obs dataframe.
 }
 \examples{
 # Load the example h5ad file
-h5ad_file <- system.file("extdata", "adata_example.h5ad.gz", package =
-"DropSift")
-r <- parseOptimusH5ad(h5ad_file, min_transcripts=0)
+h5ad_file <- system.file("extdata", "adata_example.h5ad.gz",
+  package =
+    "DropSift"
+)
+r <- parseOptimusH5ad(h5ad_file, min_transcripts = 0)
 dge <- r$dge
 cell_features <- r$cell_features
 # Display output summary
-dim(dge)  # Check dimensions of the parsed expression matrix
+dim(dge) # Check dimensions of the parsed expression matrix
 r$dge # The example DGE is 5 cells and 5 genes
 # This cell feature set is processed to include the
 # features needed for DropSift.
-head(cell_features)  # Preview the cell features dataframe.
+head(cell_features) # Preview the cell features dataframe.
 }

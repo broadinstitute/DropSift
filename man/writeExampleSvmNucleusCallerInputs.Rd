@@ -22,5 +22,5 @@ and a barcodes file (.tsv.gz) containing cell barcode information.
 \examples{
 temp_dir <- tempdir()
 writeExampleSvmNucleusCallerInputs(temp_dir)
-list.files(temp_dir)  # Verify files were created
+list.files(temp_dir) # Verify files were created
 }

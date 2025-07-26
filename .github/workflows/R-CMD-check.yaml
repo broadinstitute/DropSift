@@ -52,7 +52,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck,testthat
+          extra-packages: any::rcmdcheck,roxygen2,styler,testthat
           needs: check
           dependencies: '"hard"'
 
@@ -62,3 +62,27 @@ jobs:
           #error-on: '"error"'
           upload-snapshots: true
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+
+      - name: Roxygenize
+        shell: Rscript {0}
+        run: roxygen2::roxygenize()
+
+      - name: Styler
+        shell: Rscript {0}
+        run: styler::style_pkg()
+
+      - name: Check for modified files
+        shell: bash
+        run: |
+          git config --global --add safe.directory $PWD
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Error: Files were modified during the build."
+            echo "Modified files:"
+            git status --porcelain
+            git diff
+            echo
+            echo "Try running roxygen2::roxygenize() and styler::style_pkg() locally then commit the changes."
+            exit 1
+          else
+            echo "No files were modified"
+          fi

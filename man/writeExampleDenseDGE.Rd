@@ -20,5 +20,5 @@ will be labeled "GENE" and contain gene names.
 \examples{
 temp_dir <- tempdir()
 writeExampleDenseDGE(temp_dir)
-list.files(temp_dir)  # Verify file was created
+list.files(temp_dir) # Verify file was created
 }

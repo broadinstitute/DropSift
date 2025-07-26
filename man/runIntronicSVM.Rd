@@ -114,21 +114,22 @@ out_features_file <- file.path(temp_dir, "classified_features.tsv")
 
 # Run the function
 runIntronicSVM(
-   datasetName = "example_dataset",
-   cellFeaturesFile = cell_features_file,
-   dgeMatrixFile = temp_dir,  # directory with compressed 10x files
-   useCBRBFeatures = FALSE,
-   forceTwoClusterSolution = FALSE,
-   outPDF = out_pdf_file,
-   outFeaturesFile = out_features_file
+  datasetName = "example_dataset",
+  cellFeaturesFile = cell_features_file,
+  dgeMatrixFile = temp_dir, # directory with compressed 10x files
+  useCBRBFeatures = FALSE,
+  forceTwoClusterSolution = FALSE,
+  outPDF = out_pdf_file,
+  outFeaturesFile = out_features_file,
+  random.seed = 1
 )
 
 # Check that output files were generated
-file.exists(out_pdf_file)    # Should return TRUE
-file.exists(out_features_file)  # Should return TRUE
+file.exists(out_pdf_file) # Should return TRUE
+file.exists(out_features_file) # Should return TRUE
 
 # Inspect the PDF output report
 if (file.exists(out_pdf_file)) {
-   utils::browseURL(out_pdf_file)
+  utils::browseURL(out_pdf_file)
 }
 }

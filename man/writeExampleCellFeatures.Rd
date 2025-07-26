@@ -19,5 +19,5 @@ dataset to a specified directory in a tab-delimited format.
 \examples{
 temp_dir <- tempdir()
 writeExampleCellFeatures(temp_dir)
-list.files(temp_dir)  # Verify file was created
+list.files(temp_dir) # Verify file was created
 }
