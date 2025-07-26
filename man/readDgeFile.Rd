@@ -33,24 +33,26 @@ temp_dir <- tempdir()
 dge_file <- writeExampleDenseDGE(temp_dir)
 
 # Write example cell features to the temporary directory
-cell_features_file=writeExampleCellFeatures(temp_dir)
+cell_features_file <- writeExampleCellFeatures(temp_dir)
 
 # Load example cell features
-cell_features <- read.table(cell_features_file, sep = "\t", header = TRUE,
-stringsAsFactors = FALSE)
+cell_features <- read.table(cell_features_file,
+  sep = "\t", header = TRUE,
+  stringsAsFactors = FALSE
+)
 
 # Read the DGE matrix and reorder it to match the cell_features barcodes
 dge_matrix <- readDgeFile(dge_file, cell_features)
 
 # Display output summary
-dim(dge_matrix)  # Check dimensions of the parsed DGE matrix
-head(dge_matrix[, 1:5])  # Preview the first few columns
+dim(dge_matrix) # Check dimensions of the parsed DGE matrix
+head(dge_matrix[, 1:5]) # Preview the first few columns
 
 # Read the DGE matrix and without any cell feature dependency
-dge_matrix <- readDgeFile(dge_file, cell_features=NULL)
+dge_matrix <- readDgeFile(dge_file, cell_features = NULL)
 
 # Display output summary
-dim(dge_matrix)  # Check dimensions of the parsed DGE matrix
+dim(dge_matrix) # Check dimensions of the parsed DGE matrix
 # Cell barcodes have a different sort order.
-head(dge_matrix[, 1:5])  # Preview the first few columns
+head(dge_matrix[, 1:5]) # Preview the first few columns
 }

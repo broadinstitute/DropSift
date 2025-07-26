@@ -20,15 +20,15 @@ Print the SvmNucleusCaller object summary
 \examples{
 # Load example dataset
 data(svmNucleusCallerInputs)
-set.seed(1)  # Set seed for reproducibility
+set.seed(1) # Set seed for reproducibility
 
 # Create an SvmNucleusCaller object
 svmNucleusCaller <- SvmNucleusCaller(
-    cellFeatures = svmNucleusCallerInputs$cellFeatures,
-    dgeMatrix = svmNucleusCallerInputs$dgeMatrix,
-    datasetName = "example_dataset",
-    useCBRBFeatures = FALSE,
-    forceTwoClusterSolution = FALSE
+  cellFeatures = svmNucleusCallerInputs$cellFeatures,
+  dgeMatrix = svmNucleusCallerInputs$dgeMatrix,
+  datasetName = "example_dataset",
+  useCBRBFeatures = FALSE,
+  forceTwoClusterSolution = FALSE
 )
 
 # View summary
