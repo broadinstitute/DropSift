@@ -201,6 +201,11 @@ enhanceCelLFeatures <- function(cellFeatures, dgeMatrix, useCBRBFeatures) {
   return(cellFeatures)
 }
 
+featureIsInvariant <- function(cellFeatures, feature) {
+  r <- range(cellFeatures[[feature]])
+  return(any(is.na(r)) || r[1] == r[2])
+}
+
 validateCellFeatures <- function(cellFeatures, features) {
   requiredColumns <- setdiff(features, emptyGeneModuleScoreColName)
   requiredColumns <- c(requiredColumns, requiredNonSvmColNames)
@@ -214,6 +219,18 @@ validateCellFeatures <- function(cellFeatures, features) {
       )
       stop()
     }
+  }
+  invariants <- sapply(requiredColumns, function(c) {
+    featureIsInvariant(cellFeatures, c)
+  })
+  if (any(invariants)) {
+    invariantColumns <- requiredColumns[invariants]
+    log_error(
+      "The cell features file has invariant values for the ",
+      "following columns: ",
+      paste(invariantColumns, collapse = ", ")
+    )
+    stop()
   }
 }
 
