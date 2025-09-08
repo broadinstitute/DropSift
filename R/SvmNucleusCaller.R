@@ -201,9 +201,9 @@ enhanceCelLFeatures <- function(cellFeatures, dgeMatrix, useCBRBFeatures) {
   return(cellFeatures)
 }
 
-featureIsInvariant<-function(cellFeatures, feature) {
-    r <- range(cellFeatures[[feature]])
-    return(any(is.na(r)) || r[1] == r[2])
+featureIsInvariant <- function(cellFeatures, feature) {
+  r <- range(cellFeatures[[feature]])
+  return(any(is.na(r)) || r[1] == r[2])
 }
 
 validateCellFeatures <- function(cellFeatures, features) {
@@ -224,7 +224,7 @@ validateCellFeatures <- function(cellFeatures, features) {
     featureIsInvariant(cellFeatures, c)
   })
   if (any(invariants)) {
-      invariantColumns <- requiredColumns[invariants]
+    invariantColumns <- requiredColumns[invariants]
     log_error(
       "The cell features file has invariant values for the ",
       "following columns: ",
