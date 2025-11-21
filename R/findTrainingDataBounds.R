@@ -411,7 +411,11 @@ findTrainingDataBoundsDefault <- function(
     return(early_exit)
   }
 
-  df_non_empty <- df[log10(df$num_transcripts) > umiThreshold, ]
+  #TODO this is where we could improve by limiting the lower bound on the %intronic
+  # This is changed from just considering the num_transcripts bound.
+  # df_non_empty <- df[log10(df$num_transcripts) > umiThreshold & df$pct_intronic >= bounds_empty$intronic_lower_bound,]
+  df_non_empty=df[log10(df$num_transcripts)<umiThreshold,]
+
   early_exit <- checkEarlyExit(
     df_non_empty, bounds_empty,
     umiThreshold, verbose
@@ -419,6 +423,7 @@ findTrainingDataBoundsDefault <- function(
   if (!is.null(early_exit)) {
     return(early_exit)
   }
+
 
   bounds_non_empty_intronic <- getHighestDensityIntervalsEnforcedSmoothing(
     df_non_empty,
@@ -434,7 +439,7 @@ findTrainingDataBoundsDefault <- function(
 
   bounds_non_empty_transcripts <- getHighestDensityIntervalsEnforcedSmoothing(
     df_filtered,
-    yAxisFeature = "num_transcripts",
+    yAxisFeature = "pct_intronic",
     pctDensity = 75, showPlot = FALSE
   )
   bounds_non_empty_transcripts$umi_upper_bound <-
