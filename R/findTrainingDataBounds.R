@@ -414,8 +414,7 @@ findTrainingDataBoundsDefault <- function(
   #TODO this is where we could improve by limiting the lower bound on the %intronic
   # This is changed from just considering the num_transcripts bound.
   # df_non_empty <- df[log10(df$num_transcripts) > umiThreshold & df$pct_intronic >= bounds_empty$intronic_lower_bound,]
-  df_non_empty=df[log10(df$num_transcripts)<umiThreshold,]
-
+  df_non_empty <- df[log10(df$num_transcripts) > umiThreshold, ]
   early_exit <- checkEarlyExit(
     df_non_empty, bounds_empty,
     umiThreshold, verbose
