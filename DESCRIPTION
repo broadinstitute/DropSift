@@ -1,6 +1,6 @@
 Package: DropSift
 Type: Package
-Title: Distinguish nuclei/cells from empty droplets
+Title: Distinguish Nuclei/Cells from Empty Droplets
 Version: 0.99.0
 Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,e1071,
     logger,Seurat,data.table,methods,scales,rhdf5,gridGraphics,
@@ -18,8 +18,7 @@ biocViews: SingleCell, RNASeq, Transcriptomics, Software,
 Suggests: 
     knitr,
     rmarkdown,
-    testthat (>= 3.0.0),
-    presto
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 Depends: R (>= 4.3.0)

@@ -171,8 +171,10 @@ runIntronicSVM <- function(
 #' @inheritParams runIntronicSVM
 #' @return A list containing the dataset name, the cell features with the SVM
 #'   results, various plots, and the DGE matrix if it was parsed.
-#' @import e1071 hdrcde ggplot2 grid gridExtra cowplot ggrastr logger
+#' @import hdrcde ggplot2 grid gridExtra cowplot ggrastr logger
 #'   gridGraphics
+#' @importFrom e1071 svm
+#' @importFrom stats predict
 #' @noRd
 callByIntronicSVM <- function(
     dataset_name, cell_features, dgeMatrix,
