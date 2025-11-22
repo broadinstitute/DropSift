@@ -18,8 +18,7 @@ biocViews: SingleCell, RNASeq, Transcriptomics, Software,
 Suggests: 
     knitr,
     rmarkdown,
-    testthat (>= 3.0.0),
-    presto
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 Depends: R (>= 4.3.0)
