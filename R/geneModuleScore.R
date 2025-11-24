@@ -24,8 +24,9 @@
 #' @noRd
 #'
 addGeneModules <- function(
-    cell_features_labeled, dgeMatrix, numGenes = 100,
-    useCellBenderFeatures = TRUE, verbose = FALSE) {
+  cell_features_labeled, dgeMatrix, numGenes = 100,
+  useCellBenderFeatures = TRUE, verbose = FALSE
+) {
   log_info("Adding gene module score(s)")
   dgeMatrix <- methods::as(dgeMatrix, "CsparseMatrix")
   gc() # Garbage collection for memory efficiency
@@ -130,8 +131,9 @@ extractCellFeatures <- function(seurat_object) {
 }
 
 generateGeneModulePlots <- function(
-    seurat_object_pseudobulked,
-    cell_features, useCellBenderFeatures) {
+  seurat_object_pseudobulked,
+  cell_features, useCellBenderFeatures
+) {
   p1 <- VlnPlot(seurat_object_pseudobulked,
     features = c("empty_gene_module_score1"),
     group.by = "training_identity"
@@ -163,8 +165,9 @@ generateGeneModulePlots <- function(
 }
 
 de_wilcox <- function(
-    seurat_object, fdrThreshold = 1, min.pct = 0.25,
-    logfc.threshold = 0.25) {
+  seurat_object, fdrThreshold = 1, min.pct = 0.25,
+  logfc.threshold = 0.25
+) {
   de_results <- FindMarkers(seurat_object,
     ident.1 = "nuclei",
     ident.2 = "empty", test.use = "wilcox", min.pct = min.pct,
@@ -199,8 +202,9 @@ add_cell_metadata <- function(seurat_object, cell_features) {
 #' counts
 #' @noRd
 pseudobulkEmpties <- function(
-    seurat_object, showPlot = FALSE,
-    verbose = FALSE) {
+  seurat_object, showPlot = FALSE,
+  verbose = FALSE
+) {
   training_identity <- NULL # for R CMD CHECK
   # Separate nuclei and empty droplets
   nuclei_cells <- subset(seurat_object,
@@ -289,8 +293,9 @@ plotPseudobulkDensity <- function(seurat_object) {
 
 
 pseudobulk_to_match_umi_fast_optimized <- function(
-    target_expr,
-    non_target_expr, verbose = FALSE) {
+  target_expr,
+  non_target_expr, verbose = FALSE
+) {
   log_info(
     "Constructing pseudobulked empty ",
     "droplets for gene module detection"
@@ -340,8 +345,9 @@ initializePseudobulkMatrix <- function(non_target_expr, num_target_cells) {
 }
 
 computePseudobulkIndices <- function(
-    cumsum_target_umis,
-    cumsum_non_target, verbose) {
+  cumsum_target_umis,
+  cumsum_non_target, verbose
+) {
   start_indices <- integer(length(cumsum_target_umis))
   end_indices <- integer(length(cumsum_target_umis))
   prev_end_index <- 0
@@ -369,8 +375,9 @@ computePseudobulkIndices <- function(
 }
 
 aggregatePseudobulkedUMIs <- function(
-    pseudobulk_matrix, non_target_expr,
-    indices, non_target_indices, verbose) {
+  pseudobulk_matrix, non_target_expr,
+  indices, non_target_indices, verbose
+) {
   for (i in seq_along(indices$start)) {
     selected_cells_indices <-
       non_target_indices[indices$start[i]:indices$end[i]]

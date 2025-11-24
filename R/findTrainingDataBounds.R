@@ -19,9 +19,10 @@
 #' @import logger
 #' @noRd
 findTrainingDataBounds <- function(
-    cell_features, max_umis_empty = 50,
-    useCellBenderFeatures = TRUE, forceTwoClusterSolution = FALSE,
-    verbose = FALSE) {
+  cell_features, max_umis_empty = 50,
+  useCellBenderFeatures = TRUE, forceTwoClusterSolution = FALSE,
+  verbose = FALSE
+) {
   # If using CellBender features, use the specific CBRB method.
   if (useCellBenderFeatures) {
     return(findTrainingDataBoundsCBRB(cell_features,
@@ -50,8 +51,9 @@ findTrainingDataBounds <- function(
 }
 
 findTwoClusterSolution <- function(
-    cell_features, max_umis_empty,
-    max_umis_empty_off, verbose) {
+  cell_features, max_umis_empty,
+  max_umis_empty_off, verbose
+) {
   # With the default UMI filter, look for the separation between the two
   # highest peaks.
   logSelectionProcess("Separate Two Highest Peaks", max_umis_empty, verbose)
@@ -84,8 +86,9 @@ findTwoClusterSolution <- function(
 }
 
 findDefaultSolution <- function(
-    cell_features, max_umis_empty,
-    max_umis_empty_off, verbose) {
+  cell_features, max_umis_empty,
+  max_umis_empty_off, verbose
+) {
   # The default approach finds the pit after the highest peak.
   logSelectionProcess("Pit After Highest Peak", max_umis_empty, verbose)
   default <- findTrainingDataBoundsDefaultIterative(
@@ -140,8 +143,9 @@ logSelectionProcess <- function(method, umi_filter, verbose) {
 #' @import logger
 #' @noRd
 selectBestTrainingBoundsModel <- function(
-    results,
-    minEmptyDropletFraction = NULL) {
+  results,
+  minEmptyDropletFraction = NULL
+) {
   # To make bioconductor happy use vapply.
   silhouettes <-
     vapply(results, function(res) res$best_silhouette, numeric(1))
@@ -191,8 +195,9 @@ selectBestTrainingBoundsModel <- function(
 # SIMPLE CBRB
 #############################
 findTrainingDataBoundsCBRB <- function(
-    cell_features, max_umis_empty = 50,
-    maxContaminationThreshold = 0.1) {
+  cell_features, max_umis_empty = 50,
+  maxContaminationThreshold = 0.1
+) {
   # the interval for empty cells for training data explicitly avoid
   # searching in the very low UMI area, which are likely tons of
   # PCR error barcodes.
@@ -220,7 +225,6 @@ findTrainingDataBoundsCBRB <- function(
 
   return(result)
 }
-
 
 
 ################################
@@ -260,11 +264,12 @@ findTrainingDataBoundsCBRB <- function(
 #' @import logger
 #' @noRd
 findTrainingDataBoundsDefaultIterative <- function(
-    cell_features,
-    max_umis_empty = 50,
-    method = c("PitAfterHighestPeak", "PitBetweenHighestPeaks"),
-    smoothingMultiple = 1.1, max_iterations = 10,
-    early_termination_threshold = 0.05, verbose = TRUE) {
+  cell_features,
+  max_umis_empty = 50,
+  method = c("PitAfterHighestPeak", "PitBetweenHighestPeaks"),
+  smoothingMultiple = 1.1, max_iterations = 10,
+  early_termination_threshold = 0.05, verbose = TRUE
+) {
   method <- match.arg(method)
   log_info("Starting iterative smoothing with method [", method, "]")
   df_filtered <-
@@ -330,8 +335,9 @@ determineUMIThreshold <- function(x, method, denRange) {
 }
 
 finalizeTrainingResults <- function(
-    df_filtered, best_silhouette,
-    best_umi_threshold, best_bounds, results) {
+  df_filtered, best_silhouette,
+  best_umi_threshold, best_bounds, results
+) {
   if (is.null(best_umi_threshold)) {
     log_info("Unable to find good initialization. Returning Empty Bounds")
     return(list(
@@ -387,8 +393,9 @@ finalizeTrainingResults <- function(
 #' @return A list with the training data bounds.
 #' @noRd
 findTrainingDataBoundsDefault <- function(
-    cell_features, max_umis_empty = 50,
-    umiThresholdOverride = NULL, verbose = TRUE) {
+  cell_features, max_umis_empty = 50,
+  umiThresholdOverride = NULL, verbose = TRUE
+) {
   df <- cell_features[cell_features$num_transcripts >= max_umis_empty, ]
 
   umiThreshold <- if (!is.null(umiThresholdOverride)) {
@@ -411,7 +418,7 @@ findTrainingDataBoundsDefault <- function(
     return(early_exit)
   }
 
-  #TODO this is where we could improve by limiting the lower bound on the %intronic
+  # TODO this is where we could improve by limiting the lower bound on the %intronic
   # This is changed from just considering the num_transcripts bound.
   # df_non_empty <- df[log10(df$num_transcripts) > umiThreshold & df$pct_intronic >= bounds_empty$intronic_lower_bound,]
   df_non_empty <- df[log10(df$num_transcripts) > umiThreshold, ]
@@ -474,8 +481,9 @@ checkEarlyExit <- function(df, bounds_empty, umiThreshold, verbose) {
 
 # if there are multiple peaks, only keep the largest peak.
 getEmptyCellsByDensity <- function(
-    cell_features, yAxisFeature = "pct_intronic",
-    pctDensity = 75, showPlot = FALSE, verbose = FALSE) {
+  cell_features, yAxisFeature = "pct_intronic",
+  pctDensity = 75, showPlot = FALSE, verbose = FALSE
+) {
   probList <- unique(c(25, 50, 75, 90, 95, 99, pctDensity))
   probList <- probList[probList <= pctDensity]
 

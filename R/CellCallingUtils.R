@@ -17,7 +17,6 @@
 # OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-
 #' Get the pit after the highest peak in the UMI density
 #'
 #' @param x The data
@@ -29,8 +28,9 @@
 #' @importFrom stats density
 #' @noRd
 PitAfterHighestPeak <- function(
-    x, adjust = 2, too_close_peak_10X = NA,
-    density_n = 200) {
+  x, adjust = 2, too_close_peak_10X = NA,
+  density_n = 200
+) {
   den <- stats::density(x, adjust = adjust, n = density_n)
   # this can fail if N is not set in some circumstances.  and
   # setting N slightly changes the results because the standard N
