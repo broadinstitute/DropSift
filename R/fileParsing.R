@@ -286,8 +286,9 @@ read_dge_gz <- function(file, decreasing_order_by_size = TRUE) {
 #' @return contents of cellFeaturesFile
 #' @noRd
 readCellFeatures <- function(
-    cellFeaturesFile, requiredColumns = NULL,
-    verbose = TRUE) {
+  cellFeaturesFile, requiredColumns = NULL,
+  verbose = TRUE
+) {
   cell_features <- utils::read.table(cellFeaturesFile,
     stringsAsFactors = FALSE, header = TRUE
   )

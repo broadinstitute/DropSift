@@ -20,8 +20,9 @@
 
 # constructor, only used internally
 new_SvmNucleusCaller <- function(
-    results, cellProbabilityThreshold,
-    maxUmisEmpty, forceTwoClusterSolution, useCBRBInitialization) {
+  results, cellProbabilityThreshold,
+  maxUmisEmpty, forceTwoClusterSolution, useCBRBInitialization
+) {
   stopifnot(is.list(results))
   results$useCBRBInitialization <- useCBRBInitialization
   results$cellProbabilityThreshold <- cellProbabilityThreshold
@@ -93,10 +94,11 @@ contaminationColName <- "frac_contamination"
 #' # View summary
 #' print(svmNucleusCaller)
 SvmNucleusCaller <- function(
-    cellFeatures, dgeMatrix,
-    cellProbabilityThreshold = NULL, maxUmisEmpty = 50, featureColumns = NULL,
-    forceTwoClusterSolution = FALSE, useCBRBFeatures = TRUE,
-    useCBRBInitialization = useCBRBFeatures, datasetName = "") {
+  cellFeatures, dgeMatrix,
+  cellProbabilityThreshold = NULL, maxUmisEmpty = 50, featureColumns = NULL,
+  forceTwoClusterSolution = FALSE, useCBRBFeatures = TRUE,
+  useCBRBInitialization = useCBRBFeatures, datasetName = ""
+) {
   if (useCBRBInitialization == TRUE & useCBRBFeatures == FALSE) {
     stop("Can't use CBRB for initialization of CBCB without features")
   }
@@ -285,9 +287,10 @@ plotSvmNucleusCaller <- function(svmNucleusCaller) {
 #' @keywords internal
 #' @return The list of features to use to train the SVM
 configureFeatureColumns <- function(
-    featureColumns,
-    useCBRBFeatures,
-    dgeMatrix) {
+  featureColumns,
+  useCBRBFeatures,
+  dgeMatrix
+) {
   if (is.null(featureColumns)) {
     featureColumns <- DefaultFeatureColumns
     if (useCBRBFeatures) {

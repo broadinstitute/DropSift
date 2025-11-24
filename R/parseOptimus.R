@@ -44,9 +44,10 @@
 #' # read to be used by DropSift.  See parseOptimusH5ad.
 #' head(cell_features)
 parseH5ad <- function(
-    h5ad_file, expression_matrix_path = "X",
-    gene_id_path = "/var/ensembl_ids",
-    cell_id_path = "/obs/CellID") {
+  h5ad_file, expression_matrix_path = "X",
+  gene_id_path = "/var/ensembl_ids",
+  cell_id_path = "/obs/CellID"
+) {
   if (!file.exists(h5ad_file)) {
     stop("The file [", h5ad_file, "] does not exist.")
   }
@@ -116,8 +117,9 @@ load_h5ad_expression <- function(h5ad_file, expression_matrix_path) {
 #' Determine matrix dimensions and check orientation
 #' @noRd
 get_matrix_orientation <- function(
-    csr_indices,
-    csr_indptr, num_genes, num_cells) {
+  csr_indices,
+  csr_indptr, num_genes, num_cells
+) {
   matrix_rows <- length(csr_indptr) - 1
   matrix_cols <- max(csr_indices) + 1
   transpose_needed <- FALSE
@@ -152,9 +154,6 @@ load_h5ad_obs <- function(h5ad_file) {
     NULL
   }
 }
-
-
-
 
 
 #' Parse an Optimus pipeline generated h5ad file.
@@ -204,8 +203,9 @@ parseOptimusH5ad <- function(h5ad_file, min_transcripts = 20) {
 # of the SVM expected column names - cell_barcode, num_transcripts,
 # num_reads, pct_intronic, pct_mt
 prepareOptimusDataForNucleiSelection <- function(
-    sparse_matrix, obs_df,
-    min_transcripts = 20) {
+  sparse_matrix, obs_df,
+  min_transcripts = 20
+) {
   # calculate the % intronic
   obs_df$pct_intronic <- (obs_df$reads_mapped_intronic +
     obs_df$reads_mapped_intronic_as) / obs_df$reads_mapped_uniquely

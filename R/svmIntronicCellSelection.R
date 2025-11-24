@@ -101,13 +101,14 @@ log10_UMI_AXIS_RANGE_NEW <- c(log10(MIN_UMIs_PER_STAMP), 6) # for plotting
 #'   utils::browseURL(out_pdf_file)
 #' }
 runIntronicSVM <- function(
-    datasetName, cellFeaturesFile = NULL,
-    dgeMatrixFile = NULL, optimusH5File = NULL, cellProbabilityThreshold = NULL,
-    max_umis_empty = 50, features = NULL, useCBRBFeatures = TRUE,
-    useCBRBInitialization = useCBRBFeatures,
-    forceTwoClusterSolution = FALSE, outPDF = NULL, outFeaturesFile = NULL,
-    outCellBenderInitialParameters = NULL,
-    random.seed = NA) {
+  datasetName, cellFeaturesFile = NULL,
+  dgeMatrixFile = NULL, optimusH5File = NULL, cellProbabilityThreshold = NULL,
+  max_umis_empty = 50, features = NULL, useCBRBFeatures = TRUE,
+  useCBRBInitialization = useCBRBFeatures,
+  forceTwoClusterSolution = FALSE, outPDF = NULL, outFeaturesFile = NULL,
+  outCellBenderInitialParameters = NULL,
+  random.seed = NA
+) {
   if (!is.na(random.seed)) {
     set.seed(random.seed)
   }
@@ -177,9 +178,10 @@ runIntronicSVM <- function(
 #' @importFrom stats predict
 #' @noRd
 callByIntronicSVM <- function(
-    dataset_name, cell_features, dgeMatrix,
-    cellProbabilityThreshold = NULL, max_umis_empty = 50,
-    features, useCBRBInitialization = TRUE, forceTwoClusterSolution = FALSE) {
+  dataset_name, cell_features, dgeMatrix,
+  cellProbabilityThreshold = NULL, max_umis_empty = 50,
+  features, useCBRBInitialization = TRUE, forceTwoClusterSolution = FALSE
+) {
   validateFeaturePresence(cell_features, features)
   maxContaminationThreshold <- 0.1 # CBRB-specific contamination threshold
   log_info("Beginning SVM Intronic Cell Selection")
@@ -253,8 +255,9 @@ validateFeaturePresence <- function(cell_features, features) {
 
 
 createSelectionVisualization <- function(
-    cell_features_labeled, bounds_empty,
-    bounds_non_empty, useCellBenderFeatures, dataset_name) {
+  cell_features_labeled, bounds_empty,
+  bounds_non_empty, useCellBenderFeatures, dataset_name
+) {
   p1 <- plotExpressionVsIntronic(cell_features_labeled,
     title = "All cell barcodes",
     useCellBenderFeatures = useCellBenderFeatures
@@ -309,8 +312,9 @@ createSelectionVisualization <- function(
 ################## INPUT VALIDATION
 
 parseInputs <- function(
-    cellFeaturesFile = NULL, dgeMatrixFile = NULL,
-    optimusH5File = NULL) {
+  cellFeaturesFile = NULL, dgeMatrixFile = NULL,
+  optimusH5File = NULL
+) {
   msg1 <- paste0(
     "Supply either the cellFeaturesFile and dgeMatrixFile, or ",
     "optimusH5File.  Supplying all 3 is ambiguous."
@@ -372,8 +376,6 @@ filterZeroExpressionBarcodes <- function(cell_features, dgeMatrix) {
 ###############################################
 
 
-
-
 #' Calculate the silhouette score for a clustering of cells.
 #'
 #' @param cell_features_labeled must include a column named
@@ -390,8 +392,9 @@ filterZeroExpressionBarcodes <- function(cell_features, dgeMatrix) {
 #' @importFrom scales rescale
 #' @noRd
 calculate_silhouette <- function(
-    cell_features_labeled, downsampleRate = 0.1,
-    showPlot = FALSE, verbose = FALSE) {
+  cell_features_labeled, downsampleRate = 0.1,
+  showPlot = FALSE, verbose = FALSE
+) {
   # restrict to the training data
   idx <- which(!is.na(cell_features_labeled$training_label_is_cell))
   d <- cell_features_labeled[idx, ]
@@ -459,9 +462,10 @@ calculate_silhouette <- function(
 #' @return A data frame containing the bounds for the UMI and intronic features.
 #' @noRd
 getHighestDensityIntervalsEnforcedSmoothing <- function(
-    cell_features,
-    yAxisFeature = "pct_intronic", pctDensity = 50, maxPeaksExpected = 1,
-    showPlot = FALSE) {
+  cell_features,
+  yAxisFeature = "pct_intronic", pctDensity = 50, maxPeaksExpected = 1,
+  showPlot = FALSE
+) {
   probList <- unique(c(25, 50, 75, 90, 95, 99, pctDensity))
   probList <- probList[probList <= pctDensity]
 
@@ -491,8 +495,9 @@ getHighestDensityIntervalsEnforcedSmoothing <- function(
 # the iterative bandwidth used for the entire experiment, instead of
 # coming up with a new estimate here.
 getBoundsByDensity <- function(
-    x, probList, pctDensity, maxPeaksExpected = 1,
-    showPlot = FALSE) {
+  x, probList, pctDensity, maxPeaksExpected = 1,
+  showPlot = FALSE
+) {
   pct <- paste0(pctDensity, "%")
   unimodal <- FALSE
 
@@ -520,11 +525,11 @@ getBoundsByDensity <- function(
 }
 
 
-
 selectNucleiExemplarBounds <- function(
-    cell_features,
-    maxContaminationThreshold = 0.1, max_umis_empty = 50, initialDensity = 95,
-    bounds_empty = NULL, extendCellSelectionBounds = TRUE) {
+  cell_features,
+  maxContaminationThreshold = 0.1, max_umis_empty = 50, initialDensity = 95,
+  bounds_empty = NULL, extendCellSelectionBounds = TRUE
+) {
   # the interval for cell barcodes that are not empty for training
   # data.  set a threshold of the lowest 25% of contamination for
   # cells that have contamination < 1.
@@ -576,7 +581,6 @@ selectNucleiExemplarBounds <- function(
 }
 
 
-
 ################################### USE BOUNDS TO LABEL TRAINING DATA
 
 #' Label the training data based on the given bounds
@@ -594,9 +598,10 @@ selectNucleiExemplarBounds <- function(
 #'   `training_label_is_cell`.
 #' @noRd
 labelTrainingData <- function(
-    cell_features, bounds_empty, bounds_non_empty,
-    maxContaminationThreshold = 0.1, useCellBenderFeatures = TRUE,
-    verbose = TRUE) {
+  cell_features, bounds_empty, bounds_non_empty,
+  maxContaminationThreshold = 0.1, useCellBenderFeatures = TRUE,
+  verbose = TRUE
+) {
   if (useCellBenderFeatures) {
     result <- (labelTrainingDataCBRB(cell_features, bounds_empty,
       bounds_non_empty,
@@ -622,9 +627,10 @@ logTrainingDataSelection <- function(cell_features_labeled) {
 }
 
 labelTrainingDataCBRB <- function(
-    cell_features, bounds_empty, bounds_non_empty,
-    bounds_non_empty_extended = NULL, maxContaminationThreshold = 0.1,
-    verbose = TRUE) {
+  cell_features, bounds_empty, bounds_non_empty,
+  bounds_non_empty_extended = NULL, maxContaminationThreshold = 0.1,
+  verbose = TRUE
+) {
   # Define a function to find indices based on the given bounds
   find_indices <-
     function(cell_features, bounds, maxContaminationThreshold = 1,
@@ -668,8 +674,9 @@ labelTrainingDataCBRB <- function(
 }
 
 labelTrainingDataDefault <- function(
-    cell_features, bounds_empty,
-    bounds_non_empty, verbose = TRUE) {
+  cell_features, bounds_empty,
+  bounds_non_empty, verbose = TRUE
+) {
   # Define a function to find indices based on the given bounds
   find_indices <- function(cell_features, bounds) {
     which(log10(cell_features$num_transcripts) >= bounds$umi_lower_bound &
@@ -717,8 +724,9 @@ merge_bounds <- function(df1, df2) {
 ###################################### RUN SVM
 
 runSVM <- function(
-    cell_features_labeled, features, bounds_empty,
-    cellProbabilityThreshold = NULL) {
+  cell_features_labeled, features, bounds_empty,
+  cellProbabilityThreshold = NULL
+) {
   # scale the requested cell features.
   cell_features_scaled <- scaleFeatures(cell_features_labeled, features)
 
@@ -792,8 +800,6 @@ scaleFeatures <- function(cell_features_labeled, features) {
 }
 
 
-
-
 ######################## PLOTTING CODE
 
 
@@ -811,8 +817,9 @@ scaleFeatures <- function(cell_features_labeled, features) {
 #' @import cowplot ggplot2
 #' @noRd
 arrangeSVMCellSelectionPlots <- function(
-    plots, geneModulePlots = NULL,
-    featurePlot = NULL, dataset_name, outPDF, useOpenPDF = FALSE) {
+  plots, geneModulePlots = NULL,
+  featurePlot = NULL, dataset_name, outPDF, useOpenPDF = FALSE
+) {
   # plots 1,3,4 are ggplot2.
 
   plots[[1]] <- plots[[1]] + custom_theme()
@@ -883,8 +890,9 @@ arrangeSVMCellSelectionPlots <- function(
 #' @import cowplot ggplot2
 #' @noRd
 arrangeSVMCellSelectionPlotsNoCBRB <- function(
-    plots, geneModulePlots = NULL,
-    featurePlot = NULL, dataset_name, outPDF, useOpenPDF = FALSE) {
+  plots, geneModulePlots = NULL,
+  featurePlot = NULL, dataset_name, outPDF, useOpenPDF = FALSE
+) {
   # re-order plots to include some plots that would otherwise be
   # empty due to CBRB features not being used.
   # 1. initial selection exemplars
@@ -974,8 +982,9 @@ arrangeSVMGeneModulePlots <- function(plots, dataset_name) {
 # A custom theme for ggplot2 plots to make the text size appropriate
 # when all plots are put together on a single page.
 custom_theme <- function(
-    title_size = 8, axis_title_size = 6,
-    axis_text_size = 6, legend_title_size = 6, legend_text_size = 6) {
+  title_size = 8, axis_title_size = 6,
+  axis_text_size = 6, legend_title_size = 6, legend_text_size = 6
+) {
   theme(
     plot.title = element_text(size = title_size, face = "bold"),
     axis.title = element_text(size = axis_title_size),
@@ -996,8 +1005,9 @@ custom_theme <- function(
 #' @importFrom scales comma_format
 #' @noRd
 getCellSelectionPlotTitle <- function(
-    cell_features_result, strTitlePrefix = "",
-    transcriptFeature = "num_transcripts") {
+  cell_features_result, strTitlePrefix = "",
+  transcriptFeature = "num_transcripts"
+) {
   selected <- cell_features_result[which(cell_features_result$is_cell ==
     TRUE & cell_features_result[[transcriptFeature]] > 0), ]
 
@@ -1047,9 +1057,10 @@ getCellSelectionPlotTitle <- function(
 #' @import ggplot2
 #' @noRd
 plotExpressionVsIntronic <- function(
-    cell_features, densityCenters = NULL,
-    intronicThreshold = NULL, title = "All cell barcodes", point_size = 0.25,
-    alpha = 0.25, useCellBenderFeatures = TRUE) {
+  cell_features, densityCenters = NULL,
+  intronicThreshold = NULL, title = "All cell barcodes", point_size = 0.25,
+  alpha = 0.25, useCellBenderFeatures = TRUE
+) {
   if (!useCellBenderFeatures) {
     p <- ggplot() +
       theme_void() # empty plot
@@ -1118,8 +1129,9 @@ plotExpressionVsIntronic <- function(
 #' @importFrom graphics par smoothScatter title rect
 #' @noRd
 plotCellTypeIntervals <- function(
-    cell_features, bounds_empty, bounds_non_empty,
-    strTitleOverride = NULL, cex.axis = 0.6, cex.lab = 0.7, cex.main = 0.65) {
+  cell_features, bounds_empty, bounds_non_empty,
+  strTitleOverride = NULL, cex.axis = 0.6, cex.lab = 0.7, cex.main = 0.65
+) {
   par(mar = c(2, 2, 2, 1), mgp = c(0.8, 0.25, 0), tck = -0.02)
 
   # how many cell barcodes in the training set?
@@ -1216,9 +1228,10 @@ plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
 #' @importFrom graphics par smoothScatter title abline
 #' @noRd
 plotSelectedCellsSmoothScatter <- function(
-    cell_features, strTitlePrefix = "",
-    transcriptFeature = "num_transcripts", changePar = TRUE,
-    useCellBenderFeatures = TRUE) {
+  cell_features, strTitlePrefix = "",
+  transcriptFeature = "num_transcripts", changePar = TRUE,
+  useCellBenderFeatures = TRUE
+) {
   if (!useCellBenderFeatures) {
     p <- ggplot2::ggplot() +
       ggplot2::theme_void() # empty plot
@@ -1314,8 +1327,9 @@ plotScaledTrainingDataFeatures <- function(trainingData) {
 
 
 plotCellProbabilities <- function(
-    cell_features,
-    strTitle = "Nuclei Probability") {
+  cell_features,
+  strTitle = "Nuclei Probability"
+) {
   df <- cell_features[which(cell_features$is_cell_prob >= 0.5), ]
 
   breaks <- c(0.5, 0.6, 0.7, 0.8, 0.9, 1)
@@ -1349,13 +1363,13 @@ plotCellProbabilities <- function(
 }
 
 
-
 ####################### GENE MODULE PLOTS
 
 scatterPlotModuleScore <- function(
-    cell_features,
-    moduleName = "nuclei_gene_module_score", strTitle = "",
-    point_size = 0.25, alpha = 0.25) {
+  cell_features,
+  moduleName = "nuclei_gene_module_score", strTitle = "",
+  point_size = 0.25, alpha = 0.25
+) {
   # TO MAKE R CMD CHECK HAPPY
   num_transcripts <- pct_intronic <- NULL
 
@@ -1385,8 +1399,9 @@ scatterPlotModuleScore <- function(
 }
 
 plotModuleVsFracContam <- function(
-    cell_features,
-    moduleName = "nuclei_gene_module_score", point_size = 0.5, alpha = 0.5) {
+  cell_features,
+  moduleName = "nuclei_gene_module_score", point_size = 0.5, alpha = 0.5
+) {
   # TO MAKE R CMD CHECK HAPPY
   frac_contamination <- pct_intronic <- NULL
 
@@ -1411,9 +1426,10 @@ plotModuleVsFracContam <- function(
 }
 
 plotCellProbabilityConditionalCbrb <- function(
-    cell_features_result,
-    frac_contamination_threshold = 1,
-    useCellBenderFeatures = TRUE) {
+  cell_features_result,
+  frac_contamination_threshold = 1,
+  useCellBenderFeatures = TRUE
+) {
   # if not using celbender, short circuit with an empty plot
   if (!useCellBenderFeatures) {
     return(ggplot() +
