@@ -51,3 +51,8 @@ COPY . /app
 
 RUN R -e "remotes::install_local('/app')"
 
+#Add the testthat package so a user can run validation
+RUN R -e "install.packages(c('testthat'))"
+
+#Add presto because it speeds up some parts of the statistics
+RUN R -e "remotes::install_github('immunogenomics/presto')"
