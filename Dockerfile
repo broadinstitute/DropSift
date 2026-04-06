@@ -1,6 +1,8 @@
 # This is borrowing a bit from existing dockerfile code to use the same OS and R version, but
 FROM ubuntu:24.04
 
+ARG R_VERSION=4.5.2
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install OS stuff that R will need later.
@@ -32,24 +34,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     pkg-config \
  && rm -rf /var/lib/apt/lists/*
-# End replacement of the apt-get block.
 
-#NOTE: I had a lot of trouble installing a pinned version of R.
-
-RUN . /etc/lsb-release && \
-    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
-    add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu ${DISTRIB_CODENAME}-cran40/" && \
+# Use the pinned version of R
+RUN bash -lc '. /etc/lsb-release && \
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc > /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
+    echo "deb https://cloud.r-project.org/bin/linux/ubuntu ${DISTRIB_CODENAME}-cran40/" > /etc/apt/sources.list.d/cran-r.list && \
     apt-get update && \
+    r_version=${R_VERSION} && \
+    r_base_version=${r_version}-1.${DISTRIB_RELEASE/./}.0 && \
     apt-get install -y --no-install-recommends \
-        r-base \
- && rm -rf /var/lib/apt/lists/*
+        r-base-core=${r_base_version} \
+        r-base-dev=${r_base_version} \
+    && rm -rf /var/lib/apt/lists/*'
 
-# Set the repository for all R calls.
-# Instead of using r-project to pull source code, we'll switch to binaries.
-# RUN echo "options(repos = c(CRAN = 'https://cloud.r-project.org'))" > /etc/R/Rprofile.site
 
-# This switches CRAN to Posit Package Manager's Ubuntu binary repo
-# and sets the HTTP user agent so R can request Linux binaries.
+# Use the Posit Package Manager's Ubuntu binary repo
+# Sets the HTTP user agent so R can request Linux binaries.
 RUN . /etc/lsb-release && \
     cat >/etc/R/Rprofile.site <<EOF
 local({
@@ -69,13 +69,12 @@ local({
 })
 EOF
 
-RUN R -e "install.packages('remotes')"
 
 # Install package dependencies in a separate cached layer.
+RUN R -e "install.packages('remotes')"
+
 WORKDIR /app
-
 COPY DESCRIPTION /app/DESCRIPTION
-
 RUN R -e "remotes::install_deps('/app', dependencies = TRUE)"
 
 #Add the testthat package so a user can run validation
@@ -83,7 +82,6 @@ RUN R -e "install.packages(c('testthat'))"
 
 #Add presto because it speeds up some parts of the statistics
 RUN R -e "remotes::install_github('immunogenomics/presto')"
-# End dependency-only cached layer.
 
 # Copy the rest of the package source after dependencies are installed.
 COPY . /app
