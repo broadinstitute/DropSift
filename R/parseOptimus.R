@@ -85,8 +85,8 @@ parseH5ad <- function(
   rownames(sparse_matrix) <- metadata$ensembl_ids
   colnames(sparse_matrix) <- metadata$cell_names
   # Load cell features
-  #obs_path <- get_parent_hdf5_path(cell_id_path)
-  #obs_df <- load_h5ad_obs(h5ad_file, obs_path)
+  # obs_path <- get_parent_hdf5_path(cell_id_path)
+  # obs_df <- load_h5ad_obs(h5ad_file, obs_path)
   obs_df <- load_h5ad_obs(h5ad_file)
   # Clean up temporary file if decompressed
   if (is_gzipped) {
