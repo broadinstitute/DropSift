@@ -15,7 +15,9 @@ test_that("parse h5", {
   # This cell feature set is the raw outputs from Optimus which are not yet
   # read to be used by DropSift.  See parseOptimusH5ad.
   expect_equal(nrow(cell_features), 5)
-  expect_equal(ncol(cell_features), 43)
+  #Changed categorical parsing to no longer include the integer index,
+  #changed the row index to be a rowname.
+  expect_equal(ncol(cell_features), 41)
 })
 
 test_that("parse Optimus h5ad", {
