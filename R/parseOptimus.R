@@ -2,7 +2,7 @@
 # install.packages('BiocManager') BiocManager::install('rhdf5')
 
 
-# library(rhdf5) library(Matrix)
+# library(rhdf5); library(Matrix)
 
 
 #' Parse an H5AD file and extract the expression matrix and cell features (obs
@@ -85,6 +85,8 @@ parseH5ad <- function(
   rownames(sparse_matrix) <- metadata$ensembl_ids
   colnames(sparse_matrix) <- metadata$cell_names
   # Load cell features
+  #obs_path <- get_parent_hdf5_path(cell_id_path)
+  #obs_df <- load_h5ad_obs(h5ad_file, obs_path)
   obs_df <- load_h5ad_obs(h5ad_file)
   # Clean up temporary file if decompressed
   if (is_gzipped) {
@@ -144,17 +146,70 @@ get_matrix_orientation <- function(
   )
 }
 
-#' Load optional `obs` data
+#' Load optional `obs` data.
+#'
+#' This is more complicated, than the initial implementation.
+#' It needs to reconstruct categorical variables from the .codes and .categories
+#' Additionally, it changes the _index from the h5ad obs to
+#' rownames of the output dataframe.
 #' @noRd
-load_h5ad_obs <- function(h5ad_file) {
-  obs_path_exists <- any(h5ls(h5ad_file)$name == "obs")
-  if (obs_path_exists) {
-    as.data.frame(h5read(h5ad_file, "/obs"))
-  } else {
-    NULL
+load_h5ad_obs <- function(h5ad_file, obs_path = "/obs") {
+  obs_children <- rhdf5::h5ls(h5ad_file, recursive = TRUE)
+  obs_children <- obs_children[obs_children$group == obs_path, , drop = FALSE]
+
+  if (nrow(obs_children) == 0) {
+    return(NULL)
   }
+
+  out <- list()
+  row_index <- NULL
+
+  for (i in seq_len(nrow(obs_children))) {
+    nm <- obs_children$name[i]
+    obj_type <- obs_children$otype[i]
+
+    if (nm == "_index") {
+      row_index <- rhdf5::h5read(h5ad_file, paste0(obs_path, "/_index"))
+      next
+    }
+
+    if (obj_type == "H5I_DATASET") {
+      out[[nm]] <- rhdf5::h5read(h5ad_file, paste0(obs_path, "/", nm))
+    } else if (obj_type == "H5I_GROUP") {
+      child_group <- paste0(obs_path, "/", nm)
+      child_info <- rhdf5::h5ls(h5ad_file, recursive = TRUE)
+      child_info <- child_info[child_info$group == child_group, , drop = FALSE]
+
+      if (all(c("codes", "categories") %in% child_info$name)) {
+        codes <- rhdf5::h5read(h5ad_file, paste0(child_group, "/codes"))
+        categories <- rhdf5::h5read(h5ad_file, paste0(child_group, "/categories"))
+
+        vals <- rep(NA_character_, length(codes))
+        valid <- !is.na(codes) & codes >= 0
+        vals[valid] <- categories[codes[valid] + 1]
+
+        out[[nm]] <- vals
+      }
+    }
+  }
+
+  obs_df <- as.data.frame(out, stringsAsFactors = FALSE)
+
+  if (!is.null(row_index)) {
+    rownames(obs_df) <- make.unique(as.character(row_index))
+  }
+
+  obs_df
 }
 
+# load_h5ad_obs <- function(h5ad_file) {
+#   obs_path_exists <- any(h5ls(h5ad_file)$name == "obs")
+#   if (obs_path_exists) {
+#     as.data.frame(h5read(h5ad_file, "/obs"))
+#   } else {
+#     NULL
+#   }
+# }
 
 #' Parse an Optimus pipeline generated h5ad file.
 #'
@@ -250,4 +305,8 @@ getOptimusGeneSymbols <- function(h5ad_file) {
   # they map directly to the gene names
   gene_names_full <- gene_names[gene_indices + 1]
   return(as.character(gene_names_full))
+}
+
+get_parent_hdf5_path <- function(hdf5_path) {
+  sub("/[^/]+$", "", hdf5_path)
 }
