@@ -8,7 +8,7 @@ This tool distinguishes between nuclei and empty droplets by combining summary m
 
 To install the latest version directly from GitHub:
 
-```
+```         
 if (!require("remotes")) {
   install.packages("remotes")
 }
@@ -16,8 +16,29 @@ remotes::install_github("broadinstitute/DropSift")
 ```
 
 ## Documentation
+
 A complete guide—including input file formats, example usage, and a detailed walkthrough of the algorithmic steps—is available [here](https://html-preview.github.io/?url=https://github.com/broadinstitute/DropSift/blob/46da7e910692479a5d232e676c382da1eb4f1692/DropSift.html)
 
 ## License
+
 This package is released under the MIT License.
 
+## A Note for Developers
+
+GitHub Actions are run on all pull requests. A common source of failure is drift in documentation or code style from the expected package format.
+
+Before committing changes, ensure the following steps are run:
+
+-   Regenerate documentation:
+
+    ``` r
+    roxygen2::roxygenize()
+    ```
+
+-   Apply consistent code styling:
+
+    ``` r
+    styler::style_pkg()
+    ```
+
+    Running these steps locally helps prevent avoidable CI failures.
