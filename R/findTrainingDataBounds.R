@@ -380,6 +380,11 @@ finalizeTrainingResults <- function(
 #' droplets. It then selects areas of maximum density within each of the two
 #' partitions.
 #'
+#' This requires that there be at least 10 exemplar points in each partition
+#' for the training bounds to be valid.  It's very hard to compute density
+#' when the number of points is too low (especially 0 or 1) and that split
+#' is unlikely to be a useful outcome.
+#'
 #' @param cell_features A dataframe containing the dataset with at least columns
 #'   num_transcripts and pct_intronic.
 #' @param max_umis_empty Exclude cell barcodes from analysis with fewer than
@@ -413,7 +418,12 @@ findTrainingDataBoundsDefault <- function(
     pctDensity = 75, showPlot = FALSE, verbose = verbose
   )
 
-  early_exit <- checkEarlyExit(df_empty, bounds_empty, umiThreshold, verbose)
+  # TODO: added a minimum number of cell barcodes that must be present
+  # in each partition when checking if this result is valid,
+  # instead of checking for 0 cell barcodes in the partition.
+  early_exit <- checkEarlyExit(df_empty, bounds_empty, umiThreshold,
+    min_num = 10, verbose
+  )
   if (!is.null(early_exit)) {
     return(early_exit)
   }
@@ -424,7 +434,8 @@ findTrainingDataBoundsDefault <- function(
   df_non_empty <- df[log10(df$num_transcripts) > umiThreshold, ]
   early_exit <- checkEarlyExit(
     df_non_empty, bounds_empty,
-    umiThreshold, verbose
+    umiThreshold,
+    min_num = 10, verbose
   )
   if (!is.null(early_exit)) {
     return(early_exit)
@@ -464,9 +475,9 @@ findTrainingDataBoundsDefault <- function(
   ))
 }
 
-checkEarlyExit <- function(df, bounds_empty, umiThreshold, verbose) {
-  if (nrow(df) == 0 || is.null(bounds_empty)) {
-    if (verbose) log_warn("No data left after selecting empty barcodes.")
+checkEarlyExit <- function(df, bounds_empty, umiThreshold, min_num = 10, verbose) {
+  if (nrow(df) < min_num || is.null(bounds_empty)) {
+    if (verbose) log_warn("Minimal data left after selecting barcodes for one partition.")
     bounds_empty$umi_upper_bound <- umiThreshold
     return(list(
       bounds_empty = bounds_empty,
