@@ -126,7 +126,7 @@ logSelectionProcess <- function(method, umi_filter, verbose) {
     method, "] with UMI filter [", umi_filter, "]"
   )
 
-  log_info(msg)
+  logger::log_info(msg)
 }
 
 #' Select the best model from a list
