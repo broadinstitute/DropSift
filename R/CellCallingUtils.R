@@ -39,11 +39,11 @@
 #' @importFrom stats density
 #' @noRd
 PitAfterHighestPeak <- function(
-    x,
-    adjust = 2,
-    too_close_peak_10X = NA,
-    density_n = 200) {
-
+  x,
+  adjust = 2,
+  too_close_peak_10X = NA,
+  density_n = 200
+) {
   den <- stats::density(x, adjust = adjust, n = density_n)
   tpts <- pastecs::turnpoints(den$y)
 
@@ -94,10 +94,10 @@ PitAfterHighestPeak <- function(
 #' @importFrom pastecs turnpoints
 #' @noRd
 PitBetweenHighestPeaks <- function(
-    x,
-    adjust = 2,
-    density_n = 200) {
-
+  x,
+  adjust = 2,
+  density_n = 200
+) {
   den <- stats::density(x, adjust = adjust, n = density_n)
   tpts <- pastecs::turnpoints(den$y)
 
@@ -152,11 +152,11 @@ PitBetweenHighestPeaks <- function(
 #' @return Numeric scalar UMI threshold.
 #' @noRd
 PitAfterHighestPeakWithGridSearch <- function(
-    x,
-    adjust = seq(0.25, 3, 0.25),
-    density_n = 200,
-    neighbor_window = 2) {
-
+  x,
+  adjust = seq(0.25, 3, 0.25),
+  density_n = 200,
+  neighbor_window = 2
+) {
   getThreshold <- function(bw) {
     PitAfterHighestPeak(x, adjust = bw, density_n = density_n)
   }
@@ -181,10 +181,10 @@ PitAfterHighestPeakWithGridSearch <- function(
 #' @return Numeric scalar UMI threshold.
 #' @noRd
 PitBetweenHighestPeaksWithGridSearch <- function(
-    x,
-    adjust = seq(0.25, 3, 0.25),
-    density_n = 200) {
-
+  x,
+  adjust = seq(0.25, 3, 0.25),
+  density_n = 200
+) {
   getThreshold <- function(bw) {
     PitBetweenHighestPeaks(x, adjust = bw, density_n = density_n)
   }
@@ -230,9 +230,9 @@ summarizePitThresholds <- function(thresholds) {
 #'   available.
 #' @noRd
 summarizeStablePitThresholds <- function(
-    thresholds,
-    neighbor_window = 2) {
-
+  thresholds,
+  neighbor_window = 2
+) {
   valid_idx <- which(is.finite(thresholds))
 
   if (length(valid_idx) == 0) {
@@ -248,7 +248,6 @@ summarizeStablePitThresholds <- function(
   local_relative_mad <- rep(NA_real_, length(thresholds))
 
   for (i in valid_idx) {
-
     idx <- getLocalWindowIndex(
       i = i,
       n = length(thresholds),
@@ -284,11 +283,10 @@ summarizeStablePitThresholds <- function(
   local_median <- local_median[valid_score_idx]
   local_relative_mad <- local_relative_mad[valid_score_idx]
 
-  #plot (local_median, local_relative_mad)
+  # plot (local_median, local_relative_mad)
   best_idx <- which.min(local_relative_mad)
 
   local_median[best_idx]
-
 }
 
 #' Get a fixed-width local window around an index

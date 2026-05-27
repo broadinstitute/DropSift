@@ -206,10 +206,9 @@ logSelectionProcess <- function(method, umi_filter, verbose) {
 #' @return The selected training-bound result.
 #' @noRd
 selectBestTrainingBoundsModel <- function(
-    results,
-    minEmptyDropletFraction = NULL
+  results,
+  minEmptyDropletFraction = NULL
 ) {
-
   makeResultSummaryRow <- function(resultName, result) {
     data.frame(
       resultName = resultName,
@@ -361,17 +360,18 @@ findTrainingDataBoundsCBRB <- function(
 #'     frame.
 #' @noRd
 findTrainingDataBoundsDefaultIterative <- function(
-    cell_features,
-    max_umis_empty = 50,
-    method = c("PitAfterHighestPeak", "PitBetweenHighestPeaks"),
-    smoothingMultiple = 1.1,
-    max_iterations = 15,
-    early_termination_threshold = NULL,
-    stabilityLambda = 0.02,
-    stabilityNeighborWindow = 2,
-    intronic_floor_fraction = 1,
-    debris_pct_intronic_prior = 0.25,
-    verbose = TRUE) {
+  cell_features,
+  max_umis_empty = 50,
+  method = c("PitAfterHighestPeak", "PitBetweenHighestPeaks"),
+  smoothingMultiple = 1.1,
+  max_iterations = 15,
+  early_termination_threshold = NULL,
+  stabilityLambda = 0.02,
+  stabilityNeighborWindow = 2,
+  intronic_floor_fraction = 1,
+  debris_pct_intronic_prior = 0.25,
+  verbose = TRUE
+) {
   method <- match.arg(method)
 
   log_info("Starting iterative smoothing with method [", method, "]")
@@ -649,10 +649,10 @@ determineUMIThreshold <- function(x, method, denRange) {
 #' @return A list containing the filtered UMI vector and diagnostic values.
 #' @noRd
 makeDebrisFilteredThresholdVector <- function(
-    df,
-    bounds_empty,
-    debris_pct_intronic_prior = 0.25) {
-
+  df,
+  bounds_empty,
+  debris_pct_intronic_prior = 0.25
+) {
   x <- log10(df$num_transcripts + 1)
 
   drop <- x > bounds_empty$umi_upper_bound &
@@ -759,11 +759,11 @@ candidateSetSimilarity <- function(x, y) {
 #' @return Integer vector of candidate indices.
 #' @noRd
 getSourceMatchedCandidateWindow <- function(
-    candidate_results,
-    i,
-    neighbor_window = 2,
-    include_self = TRUE) {
-
+  candidate_results,
+  i,
+  neighbor_window = 2,
+  include_self = TRUE
+) {
   source_i <- candidate_results[[i]]$debris_intronic_floor_source
 
   same_source_idx <- which(vapply(candidate_results, function(candidate) {
@@ -818,9 +818,9 @@ getSourceMatchedCandidateWindow <- function(
 #'     be computed.
 #' @noRd
 computeCandidateStability <- function(
-    candidate_results,
-    i,
-    neighbor_window = 2
+  candidate_results,
+  i,
+  neighbor_window = 2
 ) {
   neighbor_idx <- getSourceMatchedCandidateWindow(
     candidate_results = candidate_results,
@@ -881,9 +881,9 @@ computeCandidateStability <- function(
 #'     `selection_score`.
 #' @noRd
 addCandidateStabilityScores <- function(
-    candidate_results,
-    neighbor_window = 2,
-    max_stability_penalty = 0.02
+  candidate_results,
+  neighbor_window = 2,
+  max_stability_penalty = 0.02
 ) {
   if (length(candidate_results) == 0) {
     return(candidate_results)
@@ -1166,18 +1166,17 @@ findTrainingDataBoundsDefault <- function(
     bounds_non_empty = bounds_non_empty,
     debris_intronic_floor = debris_intronic_floor
   ))
-
 }
 
 filterNonEmptyPartitionByEmptyIntronicBound <- function(
-    df,
-    umiThreshold,
-    bounds_empty,
-    intronic_floor_fraction = 1,
-    debris_pct_intronic_prior = 0.25,
-    debris_intronic_floor_override = NULL,
-    verbose = FALSE) {
-
+  df,
+  umiThreshold,
+  bounds_empty,
+  intronic_floor_fraction = 1,
+  debris_pct_intronic_prior = 0.25,
+  debris_intronic_floor_override = NULL,
+  verbose = FALSE
+) {
   df_high_umi <- df[log10(df$num_transcripts + 1) > umiThreshold, ]
 
   observed_intronic_floor <- intronic_floor_fraction *
@@ -1310,9 +1309,9 @@ getEmptyCellsByDensity <- function(
 #' @return Numeric scalar local median silhouette score.
 #' @noRd
 computeLocalMedianSilhouette <- function(
-    candidate_results,
-    i,
-    neighbor_window = 2
+  candidate_results,
+  i,
+  neighbor_window = 2
 ) {
   local_idx <- getSourceMatchedCandidateWindow(
     candidate_results = candidate_results,
@@ -1360,14 +1359,14 @@ makeEmptySmoothingResultDF <- function() {
 #' @return A one-row data frame with fixed diagnostic column names.
 #' @noRd
 makeSmoothingResultRow <- function(
-    smoothingMultiplier,
-    umiThreshold,
-    silhouetteScore,
-    debrisIntronicFloor = NA_real_,
-    debrisIntronicFloorSource = NA_character_,
-    localSilhouette = NA_real_,
-    stabilityScore = NA_real_,
-    selectionScore = NA_real_
+  smoothingMultiplier,
+  umiThreshold,
+  silhouetteScore,
+  debrisIntronicFloor = NA_real_,
+  debrisIntronicFloorSource = NA_character_,
+  localSilhouette = NA_real_,
+  stabilityScore = NA_real_,
+  selectionScore = NA_real_
 ) {
   debrisIntronicFloor <- scalarOrDefault(debrisIntronicFloor, NA_real_)
   debrisIntronicFloorSource <- scalarOrDefault(
@@ -1412,11 +1411,11 @@ scalarOrDefault <- function(x, default) {
 #' @return `resultDF` with one additional row containing missing scores.
 #' @noRd
 addFailedSmoothingResult <- function(
-    resultDF,
-    smoothingMultiplier,
-    umiThreshold,
-    debris_intronic_floor_source = NA_character_) {
-
+  resultDF,
+  smoothingMultiplier,
+  umiThreshold,
+  debris_intronic_floor_source = NA_character_
+) {
   rbind(
     resultDF,
     makeSmoothingResultRow(
@@ -1427,6 +1426,3 @@ addFailedSmoothingResult <- function(
     )
   )
 }
-
-
-
