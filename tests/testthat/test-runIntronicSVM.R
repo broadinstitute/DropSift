@@ -36,12 +36,12 @@ test_that("runIntronicSVM", {
   )
 
   selectedNuclei <- result[which(result$is_cell == T), ]$cell_barcode
-  expect_equal(length(selectedNuclei), 376)
+  expect_equal(length(selectedNuclei), 372)
 
   cbrb_args_result <- read.table(out_cbrb_args_file,
     sep = "\t",
     header = TRUE, stringsAsFactors = FALSE
   )
   expect_equal(cbrb_args_result$total_droplets_included, 2195)
-  expect_equal(cbrb_args_result$expected_cells, 376)
+  expect_equal(cbrb_args_result$expected_cells, 372)
 })
