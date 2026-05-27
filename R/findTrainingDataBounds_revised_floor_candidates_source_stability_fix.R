@@ -295,37 +295,70 @@ findTrainingDataBoundsCBRB <- function(
 # BOUNDS DISCOVERY WITHOUT CBRB
 #################################
 
-#' Find the training data bounds using an iterative approach
+#' Find the training data bounds using iterative smoothing
 #'
-#' This function scans smoothing values, estimates a UMI threshold for each
-#' smoothing value, selects candidate exemplar bounds, and scores each candidate
-#' using the silhouette score. Candidate solutions are then assigned local
-#' stability scores based on whether their selected exemplars are preserved
-#' across nearby smoothing values. The final candidate is selected using a
+#' This function searches over increasingly smoothed UMI-density estimates and
+#' selects exemplar bounds for empty droplets and nuclei. Each smoothing value
+#' generates candidate training-bound solutions that are scored by silhouette and
+#' regularized by local stability across nearby smoothing values. The procedure
+#' is designed to keep the UMI-threshold estimate robust to low-intronic debris
+#' while preserving plausible empty-droplet and nucleus exemplar bounds.
+#'
+#' For each smoothing value, the algorithm runs the following steps:
+#'
+#' \enumerate{
+#'   \item Estimate an initial UMI threshold from the full filtered UMI
+#'     distribution. This threshold is provisional and is used only to obtain an
+#'     initial empty-droplet estimate.
+#'   \item Use the provisional threshold to estimate empty-droplet bounds with
+#'     `findTrainingDataBoundsDefault()`.
+#'   \item Use the provisional empty-droplet UMI upper bound to remove likely
+#'     high-UMI debris from the vector used for UMI-threshold learning. A barcode
+#'     is removed from threshold learning only if it is to the right of the
+#'     provisional empty-droplet UMI bound and below `debris_pct_intronic_prior`.
+#'     The full filtered data frame is still retained for final exemplar
+#'     selection.
+#'   \item Estimate a refined UMI threshold from the debris-filtered UMI vector.
+#'   \item Recompute final empty and nucleus exemplar bounds from the full
+#'     filtered data frame using the refined UMI threshold.
+#'   \item Evaluate two candidate debris floors for the final nucleus partition:
+#'     the default empty-derived floor and the fixed
+#'     `debris_pct_intronic_prior` floor.
+#'   \item Label training exemplars from each candidate solution and compute the
+#'     silhouette score.
+#' }
+#'
+#' After all smoothing values are evaluated, candidate solutions are assigned
+#' local stability scores based on how consistently their empty and nucleus
+#' exemplar sets are preserved across nearby smoothing values with the same
+#' debris-floor source. The final candidate is selected using the
 #' stability-regularized score.
 #'
 #' @param cell_features A data frame containing barcode-level features.
 #' @param max_umis_empty Exclude cell barcodes from analysis with fewer than
-#'     this many UMIs before estimating the initial UMI threshold.
+#'     this many UMIs before estimating UMI thresholds.
 #' @param method Method used to select the UMI threshold.
 #' @param smoothingMultiple Multiplicative factor used to increase smoothing
 #'     across iterations.
 #' @param max_iterations Maximum number of smoothing iterations.
 #' @param early_termination_threshold Fractional silhouette drop used for early
-#'     stopping.
+#'     stopping. If `NULL`, all smoothing candidates are evaluated.
 #' @param stabilityLambda Maximum silhouette penalty applied to a completely
 #'     unstable candidate.
 #' @param stabilityNeighborWindow Number of nearby candidates on each side used
-#'     to estimate local stability.
+#'     to estimate local stability within each debris-floor source.
 #' @param intronic_floor_fraction Fraction of the empty-droplet intronic lower
-#'     bound used to filter the high-UMI partition before estimating nucleus
-#'     bounds.
+#'     bound used to compute the empty-derived floor for the high-UMI candidate
+#'     nucleus partition.
 #' @param debris_pct_intronic_prior Numeric scalar. Prior expectation for the
-#'     upper pct_intronic range of debris-like barcodes.
+#'     upper pct_intronic range of debris-like barcodes. This value is used both
+#'     when filtering high-UMI debris from UMI-threshold learning and as an
+#'     alternative candidate floor for final nucleus exemplar selection.
 #' @param verbose Logical scalar. If `TRUE`, log progress.
 #'
-#' @return A list containing selected bounds, selection metrics, and the
-#'     per-iteration diagnostic data frame.
+#' @return A list containing selected bounds, selection metrics, diagnostic
+#'     values for the selected candidate, and the per-iteration diagnostic data
+#'     frame.
 #' @noRd
 findTrainingDataBoundsDefaultIterative <- function(
     cell_features,
@@ -383,7 +416,7 @@ findTrainingDataBoundsDefaultIterative <- function(
       verbose = FALSE
     )
 
-    if (is.null(initialBounds)) {
+    if (!hasUsableEmptyBounds(initialBounds)) {
       resultDF <- addFailedSmoothingResult(
         resultDF = resultDF,
         smoothingMultiplier = smoothingMultiplier,
@@ -420,89 +453,109 @@ findTrainingDataBoundsDefaultIterative <- function(
     }
 
     # Final pass: recompute empty and nucleus exemplar bounds using the refined
-    # UMI threshold. The provisional bounds above are diagnostic only.
-    bounds <- findTrainingDataBoundsDefault(
-      df_filtered,
-      max_umis_empty,
-      umiThresholdOverride = umiThreshold,
-      intronic_floor_fraction = intronic_floor_fraction,
-      debris_pct_intronic_prior = debris_pct_intronic_prior,
-      verbose = FALSE
+    # UMI threshold. The provisional bounds above are diagnostic only. Two
+    # candidate debris floors are evaluated: the empty-derived default floor and
+    # the biological debris prior.
+    debrisFloorCandidates <- list(
+      empty_derived = NULL,
+      prior = debris_pct_intronic_prior
     )
 
-    if (is.null(bounds)) {
-      resultDF <- addFailedSmoothingResult(
-        resultDF = resultDF,
-        smoothingMultiplier = smoothingMultiplier,
-        umiThreshold = umiThreshold
+    terminate_smoothing <- FALSE
+
+    for (debrisFloorSource in names(debrisFloorCandidates)) {
+      debrisFloorOverride <- debrisFloorCandidates[[debrisFloorSource]]
+
+      bounds <- findTrainingDataBoundsDefault(
+        df_filtered,
+        max_umis_empty,
+        umiThresholdOverride = umiThreshold,
+        intronic_floor_fraction = intronic_floor_fraction,
+        debris_pct_intronic_prior = debris_pct_intronic_prior,
+        debris_intronic_floor_override = debrisFloorOverride,
+        verbose = FALSE
       )
 
-      smoothingMultiplier <- smoothingMultiplier * smoothingMultiple
-      next
-    }
+      if (!isUsableTrainingBoundsResult(bounds)) {
+        resultDF <- addFailedSmoothingResult(
+          resultDF = resultDF,
+          smoothingMultiplier = smoothingMultiplier,
+          umiThreshold = umiThreshold,
+          debris_intronic_floor_source = debrisFloorSource
+        )
 
-    cell_features_labeled <- labelTrainingData(
-      df_filtered,
-      bounds$bounds_empty,
-      bounds$bounds_non_empty,
-      NULL,
-      useCellBenderFeatures = FALSE,
-      verbose = FALSE
-    )
-
-    silhouetteResult <- calculate_silhouette(
-      cell_features_labeled,
-      showPlot = FALSE,
-      verbose = FALSE
-    )
-
-    score <- silhouetteResult$mean_silhouette
-
-    resultDF <- rbind(
-      resultDF,
-      makeSmoothingResultRow(
-        smoothingMultiplier = smoothingMultiplier,
-        umiThreshold = umiThreshold,
-        silhouetteScore = score
-      )
-    )
-
-    if (!is.na(score)) {
-      label_idx <- getTrainingLabelIndices(cell_features_labeled)
-
-      candidate_results[[length(candidate_results) + 1]] <- list(
-        resultIndex = nrow(resultDF),
-        smoothingMultiplier = smoothingMultiplier,
-        umiThreshold = umiThreshold,
-        initial_umi_threshold = initialUmiThreshold,
-        initial_empty_umi_upper_bound =
-          thresholdLearningResult$initial_empty_umi_upper_bound,
-        num_threshold_barcodes_removed =
-          thresholdLearningResult$num_removed,
-        silhouette = score,
-        bounds = bounds,
-        debris_intronic_floor = bounds$debris_intronic_floor,
-        empty_idx = label_idx$empty_idx,
-        nucleus_idx = label_idx$nucleus_idx
-      )
-
-      if (score > best_silhouette) {
-        best_silhouette <- score
+        next
       }
 
-      threshold <- (1 - early_termination_threshold) * best_silhouette
+      cell_features_labeled <- labelTrainingData(
+        df_filtered,
+        bounds$bounds_empty,
+        bounds$bounds_non_empty,
+        NULL,
+        useCellBenderFeatures = FALSE,
+        verbose = FALSE
+      )
 
-      # Early termination is disabled by default so all smoothing candidates are
-      # evaluated. This makes candidate selection less dependent on the first local
-      # silhouette drop and allows later, more stable smoothing values to be selected.
-      if (!is.null(early_termination_threshold)) {
-        threshold <- (1 - early_termination_threshold) * best_silhouette
+      silhouetteResult <- calculate_silhouette(
+        cell_features_labeled,
+        showPlot = FALSE,
+        verbose = FALSE
+      )
 
-        if (score < threshold) {
-          log_info("Early termination: silhouette score dropped significantly")
-          break
+      score <- silhouetteResult$mean_silhouette
+
+      resultDF <- rbind(
+        resultDF,
+        makeSmoothingResultRow(
+          smoothingMultiplier = smoothingMultiplier,
+          umiThreshold = umiThreshold,
+          debrisIntronicFloor = bounds$debris_intronic_floor,
+          debrisIntronicFloorSource = debrisFloorSource,
+          silhouetteScore = score
+        )
+      )
+
+      if (!is.na(score)) {
+        label_idx <- getTrainingLabelIndices(cell_features_labeled)
+
+        candidate_results[[length(candidate_results) + 1]] <- list(
+          resultIndex = nrow(resultDF),
+          smoothingMultiplier = smoothingMultiplier,
+          umiThreshold = umiThreshold,
+          initial_umi_threshold = initialUmiThreshold,
+          initial_empty_umi_upper_bound =
+            thresholdLearningResult$initial_empty_umi_upper_bound,
+          num_threshold_barcodes_removed =
+            thresholdLearningResult$num_removed,
+          debris_intronic_floor_source = debrisFloorSource,
+          silhouette = score,
+          bounds = bounds,
+          debris_intronic_floor = bounds$debris_intronic_floor,
+          empty_idx = label_idx$empty_idx,
+          nucleus_idx = label_idx$nucleus_idx
+        )
+
+        if (score > best_silhouette) {
+          best_silhouette <- score
+        }
+
+        # Early termination is disabled by default so all smoothing candidates
+        # are evaluated. This allows later, more stable smoothing values to be
+        # selected.
+        if (!is.null(early_termination_threshold)) {
+          threshold <- (1 - early_termination_threshold) * best_silhouette
+
+          if (score < threshold) {
+            log_info("Early termination: silhouette score dropped significantly")
+            terminate_smoothing <- TRUE
+            break
+          }
         }
       }
+    }
+
+    if (terminate_smoothing) {
+      break
     }
     # Advance smoothing after failed threshold/bounds attempts so a failed smoothing
     # value does not get retried repeatedly.
@@ -523,6 +576,50 @@ findTrainingDataBoundsDefaultIterative <- function(
     best_candidate,
     resultDF
   )
+}
+
+#' Check whether final training bounds are usable for scoring
+#'
+#' @param bounds Result from `findTrainingDataBoundsDefault()`.
+#'
+#' @return Logical scalar.
+#' @noRd
+isUsableTrainingBoundsResult <- function(bounds) {
+  if (is.null(bounds)) {
+    return(FALSE)
+  }
+
+  if (is.null(bounds$debris_intronic_floor)) {
+    return(FALSE)
+  }
+
+  if (is.null(bounds$bounds_empty) || is.null(bounds$bounds_non_empty)) {
+    return(FALSE)
+  }
+
+  if (any(is.na(bounds$bounds_empty)) || any(is.na(bounds$bounds_non_empty))) {
+    return(FALSE)
+  }
+
+  TRUE
+}
+
+#' Check whether initial empty bounds can be used for threshold refinement
+#'
+#' @param bounds Result from `findTrainingDataBoundsDefault()`.
+#'
+#' @return Logical scalar.
+#' @noRd
+hasUsableEmptyBounds <- function(bounds) {
+  if (is.null(bounds) || is.null(bounds$bounds_empty)) {
+    return(FALSE)
+  }
+
+  if (any(is.na(bounds$bounds_empty))) {
+    return(FALSE)
+  }
+
+  TRUE
 }
 
 determineUMIThreshold <- function(x, method, denRange) {
@@ -646,6 +743,55 @@ candidateSetSimilarity <- function(x, y) {
 }
 
 
+#' Get nearby candidates with the same debris floor source
+#'
+#' Candidate stability should be computed within a single debris-floor strategy.
+#' This prevents candidates using the empty-derived floor from being compared
+#' with candidates using the prior floor at the same or nearby smoothing values.
+#'
+#' @param candidate_results A list of candidate solution objects.
+#' @param i Integer scalar. Index of the candidate of interest.
+#' @param neighbor_window Integer scalar. Number of neighboring same-source
+#'     candidates to include on each side when possible.
+#' @param include_self Logical scalar. If `TRUE`, include candidate `i` in the
+#'     returned window.
+#'
+#' @return Integer vector of candidate indices.
+#' @noRd
+getSourceMatchedCandidateWindow <- function(
+    candidate_results,
+    i,
+    neighbor_window = 2,
+    include_self = TRUE) {
+
+  source_i <- candidate_results[[i]]$debris_intronic_floor_source
+
+  same_source_idx <- which(vapply(candidate_results, function(candidate) {
+    identical(candidate$debris_intronic_floor_source, source_i)
+  }, logical(1)))
+
+  source_pos <- which(same_source_idx == i)
+
+  if (length(source_pos) == 0) {
+    return(integer(0))
+  }
+
+  local_pos <- getLocalWindowIndex(
+    i = source_pos,
+    n = length(same_source_idx),
+    neighbor_window = neighbor_window
+  )
+
+  local_idx <- same_source_idx[local_pos]
+
+  if (!include_self) {
+    local_idx <- local_idx[local_idx != i]
+  }
+
+  local_idx
+}
+
+
 #' Compute local stability for a candidate solution
 #'
 #' This function estimates how stable one candidate exemplar selection is across
@@ -676,17 +822,12 @@ computeCandidateStability <- function(
     i,
     neighbor_window = 2
 ) {
-  if (length(candidate_results) < 2) {
-    return(1)
-  }
-
-  neighbor_idx <- getLocalWindowIndex(
+  neighbor_idx <- getSourceMatchedCandidateWindow(
+    candidate_results = candidate_results,
     i = i,
-    n = length(candidate_results),
-    neighbor_window = neighbor_window
+    neighbor_window = neighbor_window,
+    include_self = FALSE
   )
-
-  neighbor_idx <- neighbor_idx[neighbor_idx != i]
 
   if (length(neighbor_idx) == 0) {
     return(1)
@@ -718,9 +859,10 @@ computeCandidateStability <- function(
 #'
 #' This function adds `stability`, `local_silhouette`, and `selection_score` to
 #' each candidate solution. Stability measures how consistently the candidate's
-#' selected exemplar sets are preserved across nearby smoothing values. The
+#' selected exemplar sets are preserved across nearby smoothing values using
+#' the same debris-floor source. The
 #' local silhouette score is the median silhouette score among the candidate and
-#' nearby smoothing values. The final selection score subtracts a penalty for
+#' nearby smoothing values using the same debris-floor source. The final selection score subtracts a penalty for
 #' instability from the local silhouette score.
 #'
 #' The penalty is bounded by `max_stability_penalty`. For example, if
@@ -835,6 +977,7 @@ finalizeTrainingResults <- function(
       initial_empty_umi_upper_bound = NA_real_,
       num_threshold_barcodes_removed = NA_real_,
       debris_intronic_floor = NA_real_,
+      debris_intronic_floor_source = NA_character_,
       bounds_empty = NA,
       bounds_non_empty = NA,
       resultDF = results,
@@ -866,6 +1009,8 @@ finalizeTrainingResults <- function(
     num_threshold_barcodes_removed =
       best_candidate$num_threshold_barcodes_removed,
     debris_intronic_floor = best_candidate$debris_intronic_floor,
+    debris_intronic_floor_source =
+      best_candidate$debris_intronic_floor_source,
     bounds_empty = best_bounds$bounds_empty,
     bounds_non_empty = best_bounds$bounds_non_empty,
     resultDF = results,
@@ -903,9 +1048,12 @@ finalizeTrainingResults <- function(
 #' @param intronic_floor_fraction Fraction of the empty-droplet intronic lower
 #'   bound used to filter the high-UMI partition before estimating nucleus
 #'   bounds.
-#' @param debris_pct_intronic_prior Numeric scalar. Maximum empty-droplet
-#'   intronic lower bound that is interpreted as a low-intronic debris boundary.
-#'   If the computed floor is above this value, the floor is not applied.
+#' @param debris_pct_intronic_prior Numeric scalar. Prior expectation for the
+#'   upper pct_intronic range of debris-like barcodes.
+#' @param debris_intronic_floor_override Numeric scalar or `NULL`. If supplied,
+#'   this value is used directly as the pct_intronic floor for candidate nuclei.
+#'   If `NULL`, the floor is computed from the empty-derived intronic lower
+#'   bound and the debris prior.
 #' @param verbose Logical. if TRUE, prints verbose output to the log.
 #'
 #' @return A list with the training data bounds.
@@ -915,6 +1063,7 @@ findTrainingDataBoundsDefault <- function(
   umiThresholdOverride = NULL,
   intronic_floor_fraction = 1,
   debris_pct_intronic_prior = 0.25,
+  debris_intronic_floor_override = NULL,
   verbose = TRUE
 ) {
   df <- cell_features[cell_features$num_transcripts >= max_umis_empty, ]
@@ -934,15 +1083,19 @@ findTrainingDataBoundsDefault <- function(
     pctDensity = 75, showPlot = FALSE, verbose = verbose
   )
 
-  # TODO: added a minimum number of cell barcodes that must be present
-  # in each partition when checking if this result is valid,
-  # instead of checking for 0 cell barcodes in the partition.
   early_exit <- checkEarlyExit(df_empty, bounds_empty, umiThreshold,
     min_num = 10, verbose
   )
   if (!is.null(early_exit)) {
     return(early_exit)
   }
+
+  # Keep the empty exemplar bounds consistent with the UMI partition.
+  # Density smoothing can extend the interval slightly past the threshold.
+  bounds_empty$umi_upper_bound <- min(
+    bounds_empty$umi_upper_bound,
+    umiThreshold
+  )
 
   # Capture the pct_intronic floor used for candidate nuclei.
   non_empty_filter_result <- filterNonEmptyPartitionByEmptyIntronicBound(
@@ -951,6 +1104,7 @@ findTrainingDataBoundsDefault <- function(
     bounds_empty = bounds_empty,
     intronic_floor_fraction = intronic_floor_fraction,
     debris_pct_intronic_prior = debris_pct_intronic_prior,
+    debris_intronic_floor_override = debris_intronic_floor_override,
     verbose = verbose
   )
 
@@ -963,6 +1117,7 @@ findTrainingDataBoundsDefault <- function(
     min_num = 10, verbose
   )
   if (!is.null(early_exit)) {
+    early_exit$debris_intronic_floor <- debris_intronic_floor
     return(early_exit)
   }
 
@@ -999,11 +1154,19 @@ findTrainingDataBoundsDefault <- function(
     intronic_upper_bound = bounds_non_empty_intronic$intronic_upper_bound
   )
 
+  # Keep the nucleus exemplar bounds consistent with the UMI partition.
+  # Density smoothing can extend the interval slightly below the threshold.
+  bounds_non_empty$umi_lower_bound <- max(
+    bounds_non_empty$umi_lower_bound,
+    umiThreshold
+  )
+
   return(list(
     bounds_empty = bounds_empty,
     bounds_non_empty = bounds_non_empty,
     debris_intronic_floor = debris_intronic_floor
   ))
+
 }
 
 filterNonEmptyPartitionByEmptyIntronicBound <- function(
@@ -1012,6 +1175,7 @@ filterNonEmptyPartitionByEmptyIntronicBound <- function(
     bounds_empty,
     intronic_floor_fraction = 1,
     debris_pct_intronic_prior = 0.25,
+    debris_intronic_floor_override = NULL,
     verbose = FALSE) {
 
   df_high_umi <- df[log10(df$num_transcripts + 1) > umiThreshold, ]
@@ -1019,10 +1183,14 @@ filterNonEmptyPartitionByEmptyIntronicBound <- function(
   observed_intronic_floor <- intronic_floor_fraction *
     bounds_empty$intronic_lower_bound
 
-  debris_intronic_floor <- min(
-    observed_intronic_floor,
-    debris_pct_intronic_prior
-  )
+  debris_intronic_floor <- if (!is.null(debris_intronic_floor_override)) {
+    debris_intronic_floor_override
+  } else {
+    min(
+      observed_intronic_floor,
+      debris_pct_intronic_prior
+    )
+  }
 
   if (verbose) {
     logger::log_info(
@@ -1146,10 +1314,11 @@ computeLocalMedianSilhouette <- function(
     i,
     neighbor_window = 2
 ) {
-  local_idx <- getLocalWindowIndex(
+  local_idx <- getSourceMatchedCandidateWindow(
+    candidate_results = candidate_results,
     i = i,
-    n = length(candidate_results),
-    neighbor_window = neighbor_window
+    neighbor_window = neighbor_window,
+    include_self = TRUE
   )
 
   silhouette_values <- vapply(local_idx, function(j) {
@@ -1168,6 +1337,8 @@ makeEmptySmoothingResultDF <- function() {
   data.frame(
     smoothingMultiplier = numeric(0),
     umiThreshold = numeric(0),
+    debrisIntronicFloor = numeric(0),
+    debrisIntronicFloorSource = character(0),
     silhouetteScore = numeric(0),
     localSilhouette = numeric(0),
     stabilityScore = numeric(0),
@@ -1180,6 +1351,8 @@ makeEmptySmoothingResultDF <- function() {
 #' @param smoothingMultiplier Numeric scalar smoothing multiplier.
 #' @param umiThreshold Numeric scalar UMI threshold.
 #' @param silhouetteScore Numeric scalar silhouette score.
+#' @param debrisIntronicFloor Numeric scalar debris/nucleus intronic floor.
+#' @param debrisIntronicFloorSource Character scalar describing the floor source.
 #' @param localSilhouette Numeric scalar local silhouette score.
 #' @param stabilityScore Numeric scalar stability score.
 #' @param selectionScore Numeric scalar stability-regularized selection score.
@@ -1190,13 +1363,23 @@ makeSmoothingResultRow <- function(
     smoothingMultiplier,
     umiThreshold,
     silhouetteScore,
+    debrisIntronicFloor = NA_real_,
+    debrisIntronicFloorSource = NA_character_,
     localSilhouette = NA_real_,
     stabilityScore = NA_real_,
     selectionScore = NA_real_
 ) {
+  debrisIntronicFloor <- scalarOrDefault(debrisIntronicFloor, NA_real_)
+  debrisIntronicFloorSource <- scalarOrDefault(
+    debrisIntronicFloorSource,
+    NA_character_
+  )
+
   data.frame(
     smoothingMultiplier = smoothingMultiplier,
     umiThreshold = umiThreshold,
+    debrisIntronicFloor = debrisIntronicFloor,
+    debrisIntronicFloorSource = debrisIntronicFloorSource,
     silhouetteScore = silhouetteScore,
     localSilhouette = localSilhouette,
     stabilityScore = stabilityScore,
@@ -1204,25 +1387,46 @@ makeSmoothingResultRow <- function(
   )
 }
 
+#' Return a scalar value or a default when the input is empty
+#'
+#' @param x Input value.
+#' @param default Default value used when `x` is `NULL` or length zero.
+#'
+#' @return A scalar value.
+#' @noRd
+scalarOrDefault <- function(x, default) {
+  if (is.null(x) || length(x) == 0) {
+    return(default)
+  }
+
+  x[1]
+}
+
 #' Add a failed smoothing-result row
 #'
 #' @param resultDF Data frame of per-iteration smoothing results.
 #' @param smoothingMultiplier Numeric scalar smoothing multiplier.
 #' @param umiThreshold Numeric scalar UMI threshold.
+#' @param debris_intronic_floor_source Character scalar describing the floor source.
 #'
 #' @return `resultDF` with one additional row containing missing scores.
 #' @noRd
 addFailedSmoothingResult <- function(
     resultDF,
     smoothingMultiplier,
-    umiThreshold) {
+    umiThreshold,
+    debris_intronic_floor_source = NA_character_) {
 
   rbind(
     resultDF,
     makeSmoothingResultRow(
       smoothingMultiplier = smoothingMultiplier,
       umiThreshold = umiThreshold,
+      debrisIntronicFloorSource = debris_intronic_floor_source,
       silhouetteScore = NA_real_
     )
   )
 }
+
+
+
