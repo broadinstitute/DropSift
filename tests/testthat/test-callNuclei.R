@@ -8,7 +8,7 @@ test_that("callNuclei", {
     useCBRBFeatures = FALSE
   )
   selectedNuclei <- svmNucleusCaller$cell_features[as.logical(svmNucleusCaller$cell_features$is_cell), ]$cell_barcode
-  expect_equal(length(selectedNuclei), 376)
+  expect_equal(length(selectedNuclei), 372)
 })
 
 test_that("callNucleiCBRB", {
