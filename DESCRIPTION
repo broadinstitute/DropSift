@@ -1,7 +1,7 @@
 Package: DropSift
 Type: Package
 Title: Distinguish Nuclei/Cells from Empty Droplets
-Version: 0.99.1
+Version: 0.99.2
 Imports: gridExtra,grid,cowplot,ggrastr,ggplot2,pastecs,hdrcde,Matrix,e1071,
     logger,Seurat,data.table,methods,scales,rhdf5,gridGraphics,
     cluster,stats,R.utils
