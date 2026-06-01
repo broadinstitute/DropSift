@@ -21,10 +21,12 @@
 # constructor, only used internally
 new_SvmNucleusCaller <- function(
   results, cellProbabilityThreshold,
-  maxUmisEmpty, forceTwoClusterSolution, useCBRBInitialization
+  maxUmisEmpty, forceTwoClusterSolution, useCBRBInitialization,
+  use2DTrainingRefinement
 ) {
   stopifnot(is.list(results))
   results$useCBRBInitialization <- useCBRBInitialization
+  results$use2DTrainingRefinement <- use2DTrainingRefinement
   results$cellProbabilityThreshold <- cellProbabilityThreshold
   results$maxUmisEmpty <- maxUmisEmpty
   results$forceTwoClusterSolution <- forceTwoClusterSolution
@@ -72,6 +74,10 @@ contaminationColName <- "frac_contamination"
 #'   frac_contamination is used to select exemplar nuclei and empty droplets.
 #'   This option can be false and useCBRBFeatures to force DropSift to use the
 #'   non-CBRB initialization but still include CBRB in the model features.
+#' @param use2DTrainingRefinement When true, the density-only initialization
+#'   refines rectangular empty-droplet and nucleus exemplar selections with
+#'   connected components from a two-dimensional HDR. The default is false.
+#'   This is EXPERIMENTAL.
 #' @param datasetName A string to identify the dataset in plots.
 #' @return An SvmNucleusCaller object
 #' @seealso [configureFeatureColumns()]
@@ -97,7 +103,8 @@ SvmNucleusCaller <- function(
   cellFeatures, dgeMatrix,
   cellProbabilityThreshold = NULL, maxUmisEmpty = 50, featureColumns = NULL,
   forceTwoClusterSolution = FALSE, useCBRBFeatures = TRUE,
-  useCBRBInitialization = useCBRBFeatures, datasetName = ""
+  useCBRBInitialization = useCBRBFeatures, use2DTrainingRefinement = FALSE,
+  datasetName = ""
 ) {
   if (useCBRBInitialization == TRUE & useCBRBFeatures == FALSE) {
     stop("Can't use CBRB for initialization of CBCB without features")
@@ -120,6 +127,7 @@ SvmNucleusCaller <- function(
   stopifnot(is.logical(forceTwoClusterSolution))
   stopifnot(is.character(datasetName))
   stopifnot(is.logical(useCBRBFeatures))
+  stopifnot(is.logical(use2DTrainingRefinement))
 
   if (!is.null(dgeMatrix)) {
     log_info(sprintf(
@@ -161,7 +169,8 @@ SvmNucleusCaller <- function(
     cellProbabilityThreshold = cellProbabilityThreshold,
     max_umis_empty = maxUmisEmpty, features = featureColumns,
     useCBRBInitialization = useCBRBInitialization,
-    forceTwoClusterSolution = forceTwoClusterSolution
+    forceTwoClusterSolution = forceTwoClusterSolution,
+    use2DTrainingRefinement = use2DTrainingRefinement
   )
 
   results$cell_features <- data.frame(
@@ -170,7 +179,8 @@ SvmNucleusCaller <- function(
   )
   return(new_SvmNucleusCaller(
     results, cellProbabilityThreshold, maxUmisEmpty,
-    forceTwoClusterSolution, useCBRBInitialization
+    forceTwoClusterSolution, useCBRBInitialization,
+    use2DTrainingRefinement
   ))
 }
 
@@ -368,6 +378,10 @@ print.SvmNucleusCaller <- function(x, ...) {
   cat("maxUmisEmpty: ", svmNucleusCaller$maxUmisEmpty, "\n")
   cat(
     "forceTwoClusterSolution: ", svmNucleusCaller$forceTwoClusterSolution,
+    "\n"
+  )
+  cat(
+    "use2DTrainingRefinement: ", svmNucleusCaller$use2DTrainingRefinement,
     "\n"
   )
   cat(

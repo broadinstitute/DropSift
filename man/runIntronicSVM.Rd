@@ -15,6 +15,7 @@ runIntronicSVM(
   useCBRBFeatures = TRUE,
   useCBRBInitialization = useCBRBFeatures,
   forceTwoClusterSolution = FALSE,
+  use2DTrainingRefinement = FALSE,
   outPDF = NULL,
   outFeaturesFile = NULL,
   outCellBenderInitialParameters = NULL,
@@ -72,6 +73,11 @@ is overloaded with nuclei, this may correct the initial set of nuclei and
 empty droplets selected. This argument is specific to the density-style
 selection of exemplars that is only applicable when useCBRBFeatures is
 false.}
+
+\item{use2DTrainingRefinement}{EXPERIMENTAL (!!!) When true, the density-only
+initialization refines rectangular empty-droplet and nucleus exemplar
+selections with connected components from a two-dimensional HDR. The
+default is false.}
 
 \item{outPDF}{The PDF file to write the plots to.}
 
