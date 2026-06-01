@@ -579,10 +579,21 @@ findTrainingDataBoundsDefaultIterative <- function(
   resultDF <- updateResultsWithCandidateScores(resultDF, candidate_results)
   best_candidate <- selectBestCandidateBySelectionScore(candidate_results)
 
+  debris_result <- NULL
+  if (!is.null(best_candidate)) {
+    debris_result <- selectDebrisTrainingBounds(
+      df = df_filtered,
+      umiThreshold = best_candidate$umiThreshold,
+      debris_intronic_floor = best_candidate$debris_intronic_floor,
+      min_num = 10
+    )
+  }
+
   finalizeTrainingResults(
     df_filtered,
     best_candidate,
-    resultDF
+    resultDF,
+    debris_result = debris_result
   )
 }
 
@@ -972,7 +983,7 @@ selectBestCandidateBySelectionScore <- function(candidate_results) {
 
 
 finalizeTrainingResults <- function(
-  df_filtered, best_candidate, results
+  df_filtered, best_candidate, results, debris_result = NULL
 ) {
   if (is.null(best_candidate)) {
     log_info("Unable to find good initialization. Returning Empty Bounds")
@@ -988,21 +999,30 @@ finalizeTrainingResults <- function(
       debris_intronic_floor_source = NA_character_,
       bounds_empty = NA,
       bounds_non_empty = NA,
+      bounds_debris = makeEmptyTrainingBoundsDF(),
       training_empty_barcodes = character(0),
       training_nucleus_barcodes = character(0),
+      training_debris_barcodes = character(0),
       resultDF = results,
       numEmpty = NA_real_,
-      numNonEmpty = NA_real_
+      numNonEmpty = NA_real_,
+      numDebris = 0
     ))
   }
 
   best_bounds <- best_candidate$bounds
+  if (is.null(debris_result)) {
+    debris_result <- makeEmptyDebrisTrainingBoundsResult()
+  }
+
   cell_features_labeled <-
     labelTrainingData(df_filtered, best_bounds$bounds_empty,
       best_bounds$bounds_non_empty, NULL,
       useCellBenderFeatures = FALSE,
       training_empty_barcodes = best_bounds$training_empty_barcodes,
       training_nucleus_barcodes = best_bounds$training_nucleus_barcodes,
+      training_debris_barcodes = debris_result$training_debris_barcodes,
+      bounds_debris = debris_result$bounds_debris,
       verbose = FALSE
     )
 
@@ -1010,6 +1030,9 @@ finalizeTrainingResults <- function(
     !cell_features_labeled$training_label_is_cell)
   numNonEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
     cell_features_labeled$training_label_is_cell)
+  numDebris <- sum(cell_features_labeled$training_label_class == "debris",
+    na.rm = TRUE
+  )
 
   return(list(
     best_silhouette = best_candidate$silhouette,
@@ -1026,12 +1049,136 @@ finalizeTrainingResults <- function(
       best_candidate$debris_intronic_floor_source,
     bounds_empty = best_bounds$bounds_empty,
     bounds_non_empty = best_bounds$bounds_non_empty,
+    bounds_debris = debris_result$bounds_debris,
     training_empty_barcodes = best_bounds$training_empty_barcodes,
     training_nucleus_barcodes = best_bounds$training_nucleus_barcodes,
+    training_debris_barcodes = debris_result$training_debris_barcodes,
     resultDF = results,
     numEmpty = numEmpty,
-    numNonEmpty = numNonEmpty
+    numNonEmpty = numNonEmpty,
+    numDebris = numDebris
   ))
+}
+
+selectDebrisTrainingBounds <- function(
+    df,
+    umiThreshold,
+    debris_intronic_floor,
+    min_num = 10,
+    pctDensity = 95,
+    debris_start_quantile = 0.5,
+    umi_upper_quantile = 0.995
+) {
+  empty_result <- makeEmptyDebrisTrainingBoundsResult()
+
+  if (is.na(umiThreshold) || is.na(debris_intronic_floor)) {
+    return(empty_result)
+  }
+
+  x <- log10(df$num_transcripts + 1)
+
+  idx_debris_candidate <- which(
+    x > umiThreshold &
+      df$pct_intronic < debris_intronic_floor
+  )
+
+  if (length(idx_debris_candidate) < min_num) {
+    return(empty_result)
+  }
+
+  debris_umi_floor <- as.numeric(stats::quantile(
+    x[idx_debris_candidate],
+    probs = debris_start_quantile,
+    na.rm = TRUE
+  ))
+
+  idx_debris_for_density <- idx_debris_candidate[
+    x[idx_debris_candidate] >= debris_umi_floor
+  ]
+
+  if (length(idx_debris_for_density) < min_num) {
+    return(empty_result)
+  }
+
+  df_debris_density <- df[idx_debris_for_density, ]
+
+  bounds_debris_intronic <- tryCatch(
+    getHighestDensityIntervalsEnforcedSmoothing(
+      df_debris_density,
+      yAxisFeature = "pct_intronic",
+      pctDensity = pctDensity,
+      maxPeaksExpected = 1,
+      showPlot = FALSE
+    ),
+    error = function(e) NULL
+  )
+
+  if (is.null(bounds_debris_intronic) || any(is.na(bounds_debris_intronic))) {
+    return(empty_result)
+  }
+
+  df_debris_filtered <- df_debris_density[
+    df_debris_density$pct_intronic >=
+      bounds_debris_intronic$intronic_lower_bound &
+      df_debris_density$pct_intronic <=
+      bounds_debris_intronic$intronic_upper_bound,
+  ]
+
+  if (nrow(df_debris_filtered) < min_num) {
+    return(empty_result)
+  }
+
+  bounds_debris_transcripts <- tryCatch(
+    getHighestDensityIntervalsEnforcedSmoothing(
+      df_debris_filtered,
+      yAxisFeature = "pct_intronic",
+      pctDensity = pctDensity,
+      maxPeaksExpected = 1,
+      showPlot = FALSE
+    ),
+    error = function(e) NULL
+  )
+
+  if (is.null(bounds_debris_transcripts) ||
+      any(is.na(bounds_debris_transcripts))) {
+    return(empty_result)
+  }
+
+  bounds_debris_transcripts$umi_upper_bound <- as.numeric(stats::quantile(
+    log10(df_debris_filtered$num_transcripts + 1),
+    umi_upper_quantile,
+    na.rm = TRUE
+  ))
+
+  bounds_debris <- data.frame(
+    umi_lower_bound = bounds_debris_transcripts$umi_lower_bound,
+    umi_upper_bound = bounds_debris_transcripts$umi_upper_bound,
+    intronic_lower_bound = bounds_debris_intronic$intronic_lower_bound,
+    intronic_upper_bound = bounds_debris_intronic$intronic_upper_bound
+  )
+
+  selected <- log10(df_debris_density$num_transcripts + 1) >=
+    bounds_debris$umi_lower_bound &
+    log10(df_debris_density$num_transcripts + 1) <=
+    bounds_debris$umi_upper_bound &
+    df_debris_density$pct_intronic >= bounds_debris$intronic_lower_bound &
+    df_debris_density$pct_intronic <= bounds_debris$intronic_upper_bound
+
+  if (sum(selected) < min_num) {
+    return(empty_result)
+  }
+
+  list(
+    bounds_debris = bounds_debris,
+    training_debris_barcodes = rownames(df_debris_density)[selected]
+  )
+}
+
+makeEmptyDebrisTrainingBoundsResult <- function() {
+  list(
+    bounds_debris = makeEmptyTrainingBoundsDF(),
+    training_debris_barcodes = character(0)
+  )
 }
 
 ############
@@ -1583,8 +1730,10 @@ makeEmptyTrainingBoundsResult <- function(
     bounds_non_empty = makeEmptyTrainingBoundsDF(),
     bounds_empty_2d = makeEmptyTrainingBoundsDF(),
     bounds_non_empty_2d = makeEmptyTrainingBoundsDF(),
+    bounds_debris = makeEmptyTrainingBoundsDF(),
     training_empty_barcodes = character(0),
     training_nucleus_barcodes = character(0),
+    training_debris_barcodes = character(0),
     debris_intronic_floor = debris_intronic_floor
   )
 }

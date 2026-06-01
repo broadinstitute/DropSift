@@ -210,10 +210,15 @@ callByIntronicSVM <- function(
   bounds_empty <- allBounds$bounds_empty
   bounds_non_empty <- allBounds$bounds_non_empty
   cell_features_labeled <- labelTrainingData(
-    cell_features, bounds_empty,
-    bounds_non_empty, maxContaminationThreshold, useCellBenderFeatures,
+    cell_features = cell_features,
+    bounds_empty = bounds_empty,
+    bounds_non_empty = bounds_non_empty,
+    maxContaminationThreshold = maxContaminationThreshold,
+    useCellBenderFeatures = useCellBenderFeatures,
     training_empty_barcodes = allBounds$training_empty_barcodes,
-    training_nucleus_barcodes = allBounds$training_nucleus_barcodes
+    training_nucleus_barcodes = allBounds$training_nucleus_barcodes,
+    training_debris_barcodes = allBounds$training_debris_barcodes,
+    bounds_debris = allBounds$bounds_debris
   )
   logTrainingDataSelection(cell_features_labeled)
   r <- addGeneModules(cell_features_labeled, dgeMatrix,
@@ -239,8 +244,10 @@ callByIntronicSVM <- function(
   selectionPlots <- createSelectionVisualization(
     cell_features_result,
     bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name,
+    bounds_debris = allBounds$bounds_debris,
     training_empty_barcodes = allBounds$training_empty_barcodes,
-    training_nucleus_barcodes = allBounds$training_nucleus_barcodes
+    training_nucleus_barcodes = allBounds$training_nucleus_barcodes,
+    training_debris_barcodes = allBounds$training_debris_barcodes
   )
   feature_plot <- plotScaledTrainingDataFeatures(
     svm_result$trainingData[, c(features, "training_label_is_cell")]
@@ -252,8 +259,10 @@ callByIntronicSVM <- function(
     features = features, plots = selectionPlots,
     featurePlot = feature_plot, geneModulePlots = geneModulePlots,
     bounds_empty = bounds_empty, bounds_non_empty = bounds_non_empty,
+    bounds_debris = allBounds$bounds_debris,
     training_empty_barcodes = allBounds$training_empty_barcodes,
     training_nucleus_barcodes = allBounds$training_nucleus_barcodes,
+    training_debris_barcodes = allBounds$training_debris_barcodes,
     use2DTrainingRefinement = use2DTrainingRefinement
   ))
 }
@@ -273,7 +282,8 @@ validateFeaturePresence <- function(cell_features, features) {
 createSelectionVisualization <- function(
   cell_features_labeled, bounds_empty,
   bounds_non_empty, useCellBenderFeatures, dataset_name,
-  training_empty_barcodes = NULL, training_nucleus_barcodes = NULL
+  bounds_debris = NULL, training_empty_barcodes = NULL,
+  training_nucleus_barcodes = NULL, training_debris_barcodes = NULL
 ) {
   p1 <- plotExpressionVsIntronic(cell_features_labeled,
     title = "All cell barcodes",
@@ -284,6 +294,7 @@ createSelectionVisualization <- function(
     plotCellTypeIntervals(
       cell_features_labeled, bounds_empty,
       bounds_non_empty,
+      bounds_debris = bounds_debris,
       training_empty_barcodes = training_empty_barcodes,
       training_nucleus_barcodes = training_nucleus_barcodes,
       show_1d_bounds = is.null(training_empty_barcodes) ||
@@ -623,6 +634,7 @@ labelTrainingData <- function(
   cell_features, bounds_empty, bounds_non_empty,
   maxContaminationThreshold = 0.1, useCellBenderFeatures = TRUE,
   training_empty_barcodes = NULL, training_nucleus_barcodes = NULL,
+  training_debris_barcodes = NULL, bounds_debris = NULL,
   verbose = TRUE
 ) {
   if (useCellBenderFeatures) {
@@ -636,6 +648,7 @@ labelTrainingData <- function(
       bounds_non_empty,
       training_empty_barcodes = training_empty_barcodes,
       training_nucleus_barcodes = training_nucleus_barcodes,
+      bounds_debris = bounds_debris,
       verbose = verbose
     )
   }
@@ -647,8 +660,16 @@ logTrainingDataSelection <- function(cell_features_labeled) {
     !cell_features_labeled$training_label_is_cell)
   numNonEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
     cell_features_labeled$training_label_is_cell)
+  numDebris <- 0
+  if ("training_label_class" %in% colnames(cell_features_labeled)) {
+    numDebris <- sum(
+      cell_features_labeled$training_label_class == "debris",
+      na.rm = TRUE
+    )
+  }
   log_info("Number of empty exemplars: [", numEmpty, "]")
   log_info("Number of nuclei exemplars: [", numNonEmpty, "]")
+  log_info("Number of debris exemplars: [", numDebris, "]")
 }
 
 labelTrainingDataCBRB <- function(
@@ -704,6 +725,8 @@ labelTrainingDataDefault <- function(
   bounds_non_empty,
   training_empty_barcodes = NULL,
   training_nucleus_barcodes = NULL,
+  training_debris_barcodes = NULL,
+  bounds_debris = NULL,
   verbose = TRUE
 ) {
   if (!is.null(training_empty_barcodes) &&
@@ -730,13 +753,21 @@ labelTrainingDataDefault <- function(
   idxEmpty <- find_indices(cell_features, bounds_empty)
   # non empty classes have a max contamination threshold
   idxNonEmpty <- find_indices(cell_features, bounds_non_empty)
-  all <- sort(union(idxEmpty, idxNonEmpty))
+  idxDebris <- integer(0)
+  if (!is.null(bounds_debris) && !any(is.na(bounds_debris))) {
+    idxDebris <- find_indices(cell_features, bounds_debris)
+  }
+  all <- sort(union(union(idxEmpty, idxNonEmpty), idxDebris))
 
   # Assign classes based on the indices
   training_data <- cell_features
   training_data$training_label_is_cell <- NA
+  training_data$training_label_class <- NA_character_
   training_data$training_label_is_cell[idxNonEmpty] <- TRUE
   training_data$training_label_is_cell[idxEmpty] <- FALSE
+  training_data$training_label_class[idxNonEmpty] <- "nucleus"
+  training_data$training_label_class[idxEmpty] <- "empty"
+  training_data$training_label_class[idxDebris] <- "debris"
 
   if (verbose) {
     log_info(
@@ -751,6 +782,7 @@ labelTrainingDataDefaultByBarcode <- function(
   cell_features,
   training_empty_barcodes,
   training_nucleus_barcodes,
+  training_debris_barcodes = NULL,
   verbose = TRUE
 ) {
   if (is.null(rownames(cell_features)) || any(rownames(cell_features) == "")) {
@@ -759,17 +791,22 @@ labelTrainingDataDefaultByBarcode <- function(
 
   training_data <- cell_features
   training_data$training_label_is_cell <- NA
+  training_data$training_label_class <- NA_character_
 
   idxEmpty <- which(rownames(training_data) %in% training_empty_barcodes)
   idxNonEmpty <- which(rownames(training_data) %in% training_nucleus_barcodes)
+  idxDebris <- which(rownames(training_data) %in% training_debris_barcodes)
 
   training_data$training_label_is_cell[idxNonEmpty] <- TRUE
   training_data$training_label_is_cell[idxEmpty] <- FALSE
+  training_data$training_label_class[idxNonEmpty] <- "nucleus"
+  training_data$training_label_class[idxEmpty] <- "empty"
+  training_data$training_label_class[idxDebris] <- "debris"
 
   if (verbose) {
     log_info(
       "Training empty/nuclei cell barcodes selected",
-      "[using 2D density-refined method]"
+      "[using barcode-defined training labels]"
     )
   }
 
@@ -1230,8 +1267,10 @@ plotExpressionVsIntronic <- function(
 #' @noRd
 plotCellTypeIntervals <- function(
   cell_features, bounds_empty, bounds_non_empty,
+  bounds_debris = NULL,
   training_empty_barcodes = NULL,
   training_nucleus_barcodes = NULL,
+  training_debris_barcodes = NULL,
   show_1d_bounds = TRUE,
   show_2d_bounds = TRUE,
   strTitleOverride = NULL, cex.axis = 0.6, cex.lab = 0.7, cex.main = 0.65
@@ -1292,6 +1331,13 @@ plotCellTypeIntervals <- function(
     !is.na(cell_features$training_label_is_cell) &
       cell_features$training_label_is_cell
   )
+  num_training_debris <- 0
+  if ("training_label_class" %in% colnames(cell_features)) {
+    num_training_debris <- sum(
+      cell_features$training_label_class == "debris",
+      na.rm = TRUE
+    )
+  }
 
   graphics::smoothScatter(
     log10(cell_features$num_transcripts),
@@ -1311,6 +1357,8 @@ plotCellTypeIntervals <- function(
     num_training_empty,
     "] nuclei [",
     num_training_nuclei,
+    "] debris [",
+    num_training_debris,
     "]"
   )
 
@@ -1345,6 +1393,18 @@ plotCellTypeIntervals <- function(
       lwd = 2,
       lty = 1
     )
+
+    if (!is.null(bounds_debris) && !any(is.na(bounds_debris))) {
+      graphics::rect(
+        bounds_debris$umi_lower_bound,
+        bounds_debris$intronic_lower_bound,
+        bounds_debris$umi_upper_bound,
+        bounds_debris$intronic_upper_bound,
+        border = "orange",
+        lwd = 2,
+        lty = 1
+      )
+    }
   }
 
   if (show_2d_bounds) {
@@ -1364,6 +1424,20 @@ plotCellTypeIntervals <- function(
       lty = 1
     )
   }
+
+  if (!show_1d_bounds && !is.null(bounds_debris) &&
+    !any(is.na(bounds_debris))) {
+    graphics::rect(
+      bounds_debris$umi_lower_bound,
+      bounds_debris$intronic_lower_bound,
+      bounds_debris$umi_upper_bound,
+      bounds_debris$intronic_upper_bound,
+      border = "orange",
+      lwd = 2,
+      lty = 1
+    )
+  }
+
 
   par(mar = c(5.1, 4.1, 4.1, 2.1), mgp = c(3, 1, 0), tck = NA)
 }
