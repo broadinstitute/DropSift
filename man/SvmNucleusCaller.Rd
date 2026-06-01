@@ -13,6 +13,7 @@ SvmNucleusCaller(
   forceTwoClusterSolution = FALSE,
   useCBRBFeatures = TRUE,
   useCBRBInitialization = useCBRBFeatures,
+  use2DTrainingRefinement = FALSE,
   datasetName = ""
 )
 }
@@ -55,6 +56,11 @@ modifies the featureColumns argument.}
 frac_contamination is used to select exemplar nuclei and empty droplets.
 This option can be false and useCBRBFeatures to force DropSift to use the
 non-CBRB initialization but still include CBRB in the model features.}
+
+\item{use2DTrainingRefinement}{When true, the density-only initialization
+refines rectangular empty-droplet and nucleus exemplar selections with
+connected components from a two-dimensional HDR. The default is false.
+This is EXPERIMENTAL.}
 
 \item{datasetName}{A string to identify the dataset in plots.}
 }

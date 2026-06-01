@@ -65,7 +65,7 @@ findTrainingDataBounds <- function(
   cell_features, max_umis_empty = 50,
   useCellBenderFeatures = TRUE, forceTwoClusterSolution = FALSE,
   intronic_floor_fraction = 0.9, debris_pct_intronic_prior = 0.25,
-  verbose = FALSE
+  use2DTrainingRefinement = FALSE, verbose = FALSE
 ) {
   # If using CellBender features, use the specific CBRB method.
   if (useCellBenderFeatures) {
@@ -83,7 +83,7 @@ findTrainingDataBounds <- function(
     return(findTwoClusterSolution(
       cell_features, max_umis_empty,
       max_umis_empty_off, intronic_floor_fraction,
-      debris_pct_intronic_prior, verbose
+      debris_pct_intronic_prior, use2DTrainingRefinement, verbose
     ))
   } else {
     # Otherwise, use a more general approach with empty droplet fraction
@@ -91,7 +91,7 @@ findTrainingDataBounds <- function(
     return(findDefaultSolution(
       cell_features, max_umis_empty,
       max_umis_empty_off, intronic_floor_fraction,
-      debris_pct_intronic_prior, verbose
+      debris_pct_intronic_prior, use2DTrainingRefinement, verbose
     ))
   }
 }
@@ -99,7 +99,7 @@ findTrainingDataBounds <- function(
 findTwoClusterSolution <- function(
   cell_features, max_umis_empty,
   max_umis_empty_off, intronic_floor_fraction,
-  debris_pct_intronic_prior, verbose
+  debris_pct_intronic_prior, use2DTrainingRefinement, verbose
 ) {
   # With the default UMI filter, look for the separation between the two
   # highest peaks.
@@ -110,6 +110,7 @@ findTwoClusterSolution <- function(
     method = "PitBetweenHighestPeaks",
     intronic_floor_fraction = intronic_floor_fraction,
     debris_pct_intronic_prior = debris_pct_intronic_prior,
+    use2DTrainingRefinement = use2DTrainingRefinement,
     verbose = verbose
   )
 
@@ -125,6 +126,7 @@ findTwoClusterSolution <- function(
     method = "PitBetweenHighestPeaks",
     intronic_floor_fraction = intronic_floor_fraction,
     debris_pct_intronic_prior = debris_pct_intronic_prior,
+    use2DTrainingRefinement = use2DTrainingRefinement,
     verbose = verbose
   )
 
@@ -141,7 +143,7 @@ findTwoClusterSolution <- function(
 findDefaultSolution <- function(
   cell_features, max_umis_empty,
   max_umis_empty_off, intronic_floor_fraction,
-  debris_pct_intronic_prior, verbose
+  debris_pct_intronic_prior, use2DTrainingRefinement, verbose
 ) {
   # The default approach finds the pit after the highest peak.
   logSelectionProcess("Pit After Highest Peak", max_umis_empty, verbose)
@@ -150,6 +152,7 @@ findDefaultSolution <- function(
     max_umis_empty = max_umis_empty,
     intronic_floor_fraction = intronic_floor_fraction,
     debris_pct_intronic_prior = debris_pct_intronic_prior,
+    use2DTrainingRefinement = use2DTrainingRefinement,
     verbose = verbose
   )
 
@@ -164,6 +167,7 @@ findDefaultSolution <- function(
     max_umis_empty = max_umis_empty_off,
     intronic_floor_fraction = intronic_floor_fraction,
     debris_pct_intronic_prior = debris_pct_intronic_prior,
+    use2DTrainingRefinement = use2DTrainingRefinement,
     verbose = verbose
   )
 
@@ -370,6 +374,7 @@ findTrainingDataBoundsDefaultIterative <- function(
   stabilityNeighborWindow = 2,
   intronic_floor_fraction = 1,
   debris_pct_intronic_prior = 0.25,
+  use2DTrainingRefinement = FALSE,
   verbose = TRUE
 ) {
   method <- match.arg(method)
@@ -473,6 +478,7 @@ findTrainingDataBoundsDefaultIterative <- function(
         intronic_floor_fraction = intronic_floor_fraction,
         debris_pct_intronic_prior = debris_pct_intronic_prior,
         debris_intronic_floor_override = debrisFloorOverride,
+        use2DTrainingRefinement = use2DTrainingRefinement,
         verbose = FALSE
       )
 
@@ -493,6 +499,8 @@ findTrainingDataBoundsDefaultIterative <- function(
         bounds$bounds_non_empty,
         NULL,
         useCellBenderFeatures = FALSE,
+        training_empty_barcodes = bounds$training_empty_barcodes,
+        training_nucleus_barcodes = bounds$training_nucleus_barcodes,
         verbose = FALSE
       )
 
@@ -980,6 +988,8 @@ finalizeTrainingResults <- function(
       debris_intronic_floor_source = NA_character_,
       bounds_empty = NA,
       bounds_non_empty = NA,
+      training_empty_barcodes = character(0),
+      training_nucleus_barcodes = character(0),
       resultDF = results,
       numEmpty = NA_real_,
       numNonEmpty = NA_real_
@@ -990,7 +1000,10 @@ finalizeTrainingResults <- function(
   cell_features_labeled <-
     labelTrainingData(df_filtered, best_bounds$bounds_empty,
       best_bounds$bounds_non_empty, NULL,
-      useCellBenderFeatures = FALSE, verbose = FALSE
+      useCellBenderFeatures = FALSE,
+      training_empty_barcodes = best_bounds$training_empty_barcodes,
+      training_nucleus_barcodes = best_bounds$training_nucleus_barcodes,
+      verbose = FALSE
     )
 
   numEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
@@ -1013,6 +1026,8 @@ finalizeTrainingResults <- function(
       best_candidate$debris_intronic_floor_source,
     bounds_empty = best_bounds$bounds_empty,
     bounds_non_empty = best_bounds$bounds_non_empty,
+    training_empty_barcodes = best_bounds$training_empty_barcodes,
+    training_nucleus_barcodes = best_bounds$training_nucleus_barcodes,
     resultDF = results,
     numEmpty = numEmpty,
     numNonEmpty = numNonEmpty
@@ -1064,6 +1079,7 @@ findTrainingDataBoundsDefault <- function(
   intronic_floor_fraction = 1,
   debris_pct_intronic_prior = 0.25,
   debris_intronic_floor_override = NULL,
+  use2DTrainingRefinement = FALSE,
   verbose = TRUE
 ) {
   df <- cell_features[cell_features$num_transcripts >= max_umis_empty, ]
@@ -1161,12 +1177,418 @@ findTrainingDataBoundsDefault <- function(
     umiThreshold
   )
 
+  training_empty_barcodes <- NULL
+  training_nucleus_barcodes <- NULL
+  bounds_empty_2d <- NULL
+  bounds_non_empty_2d <- NULL
+
+  if (use2DTrainingRefinement) {
+    empty_refined <- refineTrainingBoundsWith2DComponent(
+      df = df_empty,
+      bounds = bounds_empty,
+      pctDensity = 75
+    )
+
+    nucleus_refined <- refineTrainingBoundsWith2DComponent(
+      df = df_non_empty,
+      bounds = bounds_non_empty,
+      pctDensity = 75
+    )
+
+    if (!isUsable2DRefinement(empty_refined) ||
+      !isUsable2DRefinement(nucleus_refined)) {
+      return(makeEmptyTrainingBoundsResult(
+        bounds_empty = bounds_empty,
+        debris_intronic_floor = debris_intronic_floor
+      ))
+    }
+
+    training_empty_barcodes <- empty_refined$selected_barcodes
+    training_nucleus_barcodes <- extendNucleus2DSelectionToHighUMITail(
+      df = df_non_empty,
+      selected_barcodes = nucleus_refined$selected_barcodes
+    )
+
+    bounds_empty_2d <- empty_refined$bounds
+    bounds_non_empty_2d <- getBoundsFromSelectedBarcodes(
+      df = df_non_empty,
+      selected_barcodes = training_nucleus_barcodes
+    )
+  }
+
   return(list(
     bounds_empty = bounds_empty,
     bounds_non_empty = bounds_non_empty,
+    bounds_empty_2d = bounds_empty_2d,
+    bounds_non_empty_2d = bounds_non_empty_2d,
+    training_empty_barcodes = training_empty_barcodes,
+    training_nucleus_barcodes = training_nucleus_barcodes,
     debris_intronic_floor = debris_intronic_floor
   ))
 }
+
+extendNucleus2DSelectionToHighUMITail <- function(
+  df,
+  selected_barcodes,
+  high_umi_quantile = 0.75,
+  intronic_quantiles = c(0.05, 0.95),
+  umi_upper_quantile = 0.995
+) {
+  if (length(selected_barcodes) == 0) {
+    return(character(0))
+  }
+
+  selected <- rownames(df) %in% selected_barcodes
+
+  if (sum(selected) == 0) {
+    return(character(0))
+  }
+
+  x <- log10(df$num_transcripts + 1)
+  y <- df$pct_intronic
+
+  selected_x <- x[selected]
+  selected_y <- y[selected]
+
+  high_umi_cutoff <- as.numeric(stats::quantile(
+    selected_x,
+    high_umi_quantile,
+    na.rm = TRUE
+  ))
+
+  high_umi_selected <- selected & x >= high_umi_cutoff
+
+  if (sum(high_umi_selected) < 10) {
+    high_umi_selected <- selected
+  }
+
+  intronic_bounds <- as.numeric(stats::quantile(
+    y[high_umi_selected],
+    intronic_quantiles,
+    na.rm = TRUE
+  ))
+
+  intronic_lower <- intronic_bounds[1]
+  intronic_upper <- intronic_bounds[2]
+
+  umi_lower <- min(selected_x, na.rm = TRUE)
+
+  in_intronic_band <- y >= intronic_lower & y <= intronic_upper
+
+  if (sum(in_intronic_band) == 0) {
+    return(selected_barcodes)
+  }
+
+  umi_upper <- as.numeric(stats::quantile(
+    x[in_intronic_band],
+    umi_upper_quantile,
+    na.rm = TRUE
+  ))
+
+  extended <- x >= umi_lower &
+    x <= umi_upper &
+    in_intronic_band
+
+  union(selected_barcodes, rownames(df)[extended])
+}
+
+getBoundsFromSelectedBarcodes <- function(df, selected_barcodes) {
+  selected <- rownames(df) %in% selected_barcodes
+
+  if (sum(selected) == 0) {
+    return(makeEmptyTrainingBoundsDF())
+  }
+
+  x <- log10(df$num_transcripts + 1)
+  y <- df$pct_intronic
+
+  data.frame(
+    umi_lower_bound = min(x[selected], na.rm = TRUE),
+    umi_upper_bound = max(x[selected], na.rm = TRUE),
+    intronic_lower_bound = min(y[selected], na.rm = TRUE),
+    intronic_upper_bound = max(y[selected], na.rm = TRUE)
+  )
+}
+
+
+#' Refine rectangular exemplar bounds with a 2D HDR component
+#'
+#' This function estimates a 2D highest-density region in log10 UMI and
+#' pct_intronic space. If the HDR contains multiple connected components, the
+#' component with the largest overlap with the supplied rectangular bounds is
+#' selected. The selected cell barcodes are returned using row names.
+#'
+#' @param df Data frame containing `num_transcripts` and `pct_intronic`.
+#' @param bounds Rectangular bounds used as the anchor for choosing the 2D
+#'     connected component.
+#' @param pctDensity Numeric scalar. Probability mass used for the 2D HDR.
+#' @param kde_package Character scalar passed to `hdrcde::hdr.2d()`.
+#'
+#' @return A list containing refined bounds, selected barcodes, and diagnostics.
+#' @noRd
+refineTrainingBoundsWith2DComponent <- function(
+  df,
+  bounds,
+  pctDensity = 75,
+  kde_package = "ash"
+) {
+  empty_result <- makeEmpty2DRefinementResult()
+
+  if (is.null(rownames(df)) || any(rownames(df) == "")) {
+    return(empty_result)
+  }
+
+  x <- log10(df$num_transcripts + 1)
+  y <- df$pct_intronic
+
+  keep <- is.finite(x) & is.finite(y)
+  x_in <- x[keep]
+  y_in <- y[keep]
+
+  if (length(x_in) < 10) {
+    return(empty_result)
+  }
+
+  hdr <- tryCatch(
+    hdrcde::hdr.2d(
+      x = x_in,
+      y = y_in,
+      prob = pctDensity / 100,
+      kde.package = kde_package
+    ),
+    error = function(e) NULL
+  )
+
+  if (is.null(hdr)) {
+    return(empty_result)
+  }
+
+  density_threshold <- as.numeric(hdr$falpha[1])
+  density_mask <- hdr$den$z >= density_threshold
+  component_grid <- labelConnectedGridComponents(density_mask)
+
+  point_component <- assignPointsToGridComponents(
+    x = x_in,
+    y = y_in,
+    grid_x = hdr$den$x,
+    grid_y = hdr$den$y,
+    component_grid = component_grid
+  )
+
+  in_anchor <- x_in >= bounds$umi_lower_bound &
+    x_in <= bounds$umi_upper_bound &
+    y_in >= bounds$intronic_lower_bound &
+    y_in <= bounds$intronic_upper_bound
+
+  component_ids <- sort(unique(point_component))
+  component_ids <- component_ids[!is.na(component_ids) & component_ids > 0]
+
+  if (length(component_ids) == 0 || sum(in_anchor) == 0) {
+    empty_result$hdr <- hdr
+    return(empty_result)
+  }
+
+  component_summary <- summarize2DComponents(
+    component_ids = component_ids,
+    point_component = point_component,
+    in_anchor = in_anchor,
+    x_in = x_in,
+    y_in = y_in
+  )
+
+  if (nrow(component_summary) == 0 ||
+    max(component_summary$n_overlap, na.rm = TRUE) == 0) {
+    empty_result$hdr <- hdr
+    empty_result$component_summary <- component_summary
+    return(empty_result)
+  }
+
+  best_component <- component_summary$component_id[
+    which.max(component_summary$n_overlap)
+  ]
+
+  selected_in <- point_component == best_component
+
+  if (!is.null(hdr$fxy)) {
+    selected_in <- selected_in & hdr$fxy >= density_threshold
+  }
+
+  selected <- rep(FALSE, nrow(df))
+  selected[keep] <- selected_in
+
+  selected_barcodes <- rownames(df)[selected]
+
+  if (length(selected_barcodes) == 0) {
+    empty_result$hdr <- hdr
+    empty_result$component_summary <- component_summary
+    return(empty_result)
+  }
+
+  list(
+    bounds = data.frame(
+      umi_lower_bound = min(x[selected]),
+      umi_upper_bound = max(x[selected]),
+      intronic_lower_bound = min(y[selected]),
+      intronic_upper_bound = max(y[selected])
+    ),
+    selected = selected,
+    selected_barcodes = selected_barcodes,
+    hdr = hdr,
+    component_summary = component_summary,
+    selected_component = best_component,
+    density_threshold = density_threshold,
+    pctDensity = pctDensity,
+    kde_package = kde_package,
+    anchor_bounds = bounds
+  )
+}
+
+
+summarize2DComponents <- function(
+  component_ids,
+  point_component,
+  in_anchor,
+  x_in,
+  y_in
+) {
+  do.call(
+    rbind,
+    lapply(component_ids, function(component_id) {
+      in_component <- point_component == component_id
+      n_component <- sum(in_component)
+      n_overlap <- sum(in_component & in_anchor)
+
+      data.frame(
+        component_id = component_id,
+        n_component = n_component,
+        component_fraction = n_component / length(x_in),
+        n_overlap = n_overlap,
+        overlap_fraction = n_overlap / n_component,
+        anchor_recall = n_overlap / sum(in_anchor),
+        median_umi = stats::median(x_in[in_component]),
+        median_intronic = stats::median(y_in[in_component])
+      )
+    })
+  )
+}
+
+labelConnectedGridComponents <- function(mask) {
+  nr <- nrow(mask)
+  nc <- ncol(mask)
+  labels <- matrix(0L, nrow = nr, ncol = nc)
+  current_label <- 0L
+
+  for (i in seq_len(nr)) {
+    for (j in seq_len(nc)) {
+      if (!mask[i, j] || labels[i, j] != 0L) {
+        next
+      }
+
+      current_label <- current_label + 1L
+      queue_i <- i
+      queue_j <- j
+      labels[i, j] <- current_label
+
+      while (length(queue_i) > 0) {
+        qi <- queue_i[1]
+        qj <- queue_j[1]
+        queue_i <- queue_i[-1]
+        queue_j <- queue_j[-1]
+
+        neighbors <- rbind(
+          c(qi - 1L, qj),
+          c(qi + 1L, qj),
+          c(qi, qj - 1L),
+          c(qi, qj + 1L)
+        )
+
+        for (k in seq_len(nrow(neighbors))) {
+          ni <- neighbors[k, 1]
+          nj <- neighbors[k, 2]
+
+          if (ni < 1L || ni > nr || nj < 1L || nj > nc) {
+            next
+          }
+
+          if (!mask[ni, nj] || labels[ni, nj] != 0L) {
+            next
+          }
+
+          labels[ni, nj] <- current_label
+          queue_i <- c(queue_i, ni)
+          queue_j <- c(queue_j, nj)
+        }
+      }
+    }
+  }
+
+  labels
+}
+
+assignPointsToGridComponents <- function(
+  x,
+  y,
+  grid_x,
+  grid_y,
+  component_grid
+) {
+  x_idx <- findInterval(x, grid_x, all.inside = TRUE)
+  y_idx <- findInterval(y, grid_y, all.inside = TRUE)
+
+  component_grid[cbind(x_idx, y_idx)]
+}
+
+makeEmpty2DRefinementResult <- function() {
+  list(
+    bounds = makeEmptyTrainingBoundsDF(),
+    selected = logical(0),
+    selected_barcodes = character(0),
+    hdr = NULL,
+    component_summary = NULL,
+    selected_component = NA_integer_,
+    density_threshold = NA_real_,
+    pctDensity = NA_real_,
+    kde_package = NA_character_,
+    anchor_bounds = NULL
+  )
+}
+
+isUsable2DRefinement <- function(result) {
+  if (is.null(result) || length(result$selected_barcodes) == 0) {
+    return(FALSE)
+  }
+
+  if (is.null(result$bounds) || any(is.na(result$bounds))) {
+    return(FALSE)
+  }
+
+  TRUE
+}
+
+makeEmptyTrainingBoundsDF <- function() {
+  data.frame(
+    umi_lower_bound = NA_real_,
+    umi_upper_bound = NA_real_,
+    intronic_lower_bound = NA_real_,
+    intronic_upper_bound = NA_real_
+  )
+}
+
+makeEmptyTrainingBoundsResult <- function(
+  bounds_empty = makeEmptyTrainingBoundsDF(),
+  debris_intronic_floor = NA_real_
+) {
+  list(
+    bounds_empty = bounds_empty,
+    bounds_non_empty = makeEmptyTrainingBoundsDF(),
+    bounds_empty_2d = makeEmptyTrainingBoundsDF(),
+    bounds_non_empty_2d = makeEmptyTrainingBoundsDF(),
+    training_empty_barcodes = character(0),
+    training_nucleus_barcodes = character(0),
+    debris_intronic_floor = debris_intronic_floor
+  )
+}
+
 
 filterNonEmptyPartitionByEmptyIntronicBound <- function(
   df,

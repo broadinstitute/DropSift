@@ -52,6 +52,10 @@ log10_UMI_AXIS_RANGE_NEW <- c(log10(MIN_UMIs_PER_STAMP), 6) # for plotting
 #'   empty droplets selected. This argument is specific to the density-style
 #'   selection of exemplars that is only applicable when useCBRBFeatures is
 #'   false.
+#' @param use2DTrainingRefinement EXPERIMENTAL (!!!) When true, the density-only
+#'   initialization refines rectangular empty-droplet and nucleus exemplar
+#'   selections with connected components from a two-dimensional HDR. The
+#'   default is false.
 #' @param outPDF The PDF file to write the plots to.
 #' @param outFeaturesFile The cell features dataframe, further annotated by the
 #'   SVM to include the cell probability and label, along with which cell
@@ -105,7 +109,8 @@ runIntronicSVM <- function(
   dgeMatrixFile = NULL, optimusH5File = NULL, cellProbabilityThreshold = NULL,
   max_umis_empty = 50, features = NULL, useCBRBFeatures = TRUE,
   useCBRBInitialization = useCBRBFeatures,
-  forceTwoClusterSolution = FALSE, outPDF = NULL, outFeaturesFile = NULL,
+  forceTwoClusterSolution = FALSE, use2DTrainingRefinement = FALSE,
+  outPDF = NULL, outFeaturesFile = NULL,
   outCellBenderInitialParameters = NULL,
   random.seed = NA
 ) {
@@ -128,7 +133,10 @@ runIntronicSVM <- function(
     cellProbabilityThreshold = cellProbabilityThreshold,
     maxUmisEmpty = max_umis_empty, featureColumns = features,
     forceTwoClusterSolution = forceTwoClusterSolution,
-    useCBRBFeatures = useCBRBFeatures, datasetName = datasetName
+    use2DTrainingRefinement = use2DTrainingRefinement,
+    useCBRBFeatures = useCBRBFeatures,
+    useCBRBInitialization = useCBRBInitialization,
+    datasetName = datasetName
   )
 
   cell_features_result <- svmNucleusCaller$cell_features
@@ -179,7 +187,8 @@ runIntronicSVM <- function(
 callByIntronicSVM <- function(
   dataset_name, cell_features, dgeMatrix,
   cellProbabilityThreshold = NULL, max_umis_empty = 50,
-  features, useCBRBInitialization = TRUE, forceTwoClusterSolution = FALSE
+  features, useCBRBInitialization = TRUE, forceTwoClusterSolution = FALSE,
+  use2DTrainingRefinement = FALSE
 ) {
   validateFeaturePresence(cell_features, features)
   maxContaminationThreshold <- 0.1 # CBRB-specific contamination threshold
@@ -195,13 +204,16 @@ callByIntronicSVM <- function(
   }
   allBounds <- findTrainingDataBounds(cell_features, max_umis_empty,
     useCellBenderFeatures = useCBRBInitialization,
-    forceTwoClusterSolution = forceTwoClusterSolution
+    forceTwoClusterSolution = forceTwoClusterSolution,
+    use2DTrainingRefinement = use2DTrainingRefinement
   )
   bounds_empty <- allBounds$bounds_empty
   bounds_non_empty <- allBounds$bounds_non_empty
   cell_features_labeled <- labelTrainingData(
     cell_features, bounds_empty,
-    bounds_non_empty, maxContaminationThreshold, useCellBenderFeatures
+    bounds_non_empty, maxContaminationThreshold, useCellBenderFeatures,
+    training_empty_barcodes = allBounds$training_empty_barcodes,
+    training_nucleus_barcodes = allBounds$training_nucleus_barcodes
   )
   logTrainingDataSelection(cell_features_labeled)
   r <- addGeneModules(cell_features_labeled, dgeMatrix,
@@ -226,7 +238,9 @@ callByIntronicSVM <- function(
 
   selectionPlots <- createSelectionVisualization(
     cell_features_result,
-    bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name
+    bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name,
+    training_empty_barcodes = allBounds$training_empty_barcodes,
+    training_nucleus_barcodes = allBounds$training_nucleus_barcodes
   )
   feature_plot <- plotScaledTrainingDataFeatures(
     svm_result$trainingData[, c(features, "training_label_is_cell")]
@@ -237,7 +251,10 @@ callByIntronicSVM <- function(
     cell_features = svm_result$cell_features,
     features = features, plots = selectionPlots,
     featurePlot = feature_plot, geneModulePlots = geneModulePlots,
-    bounds_empty = bounds_empty, bounds_non_empty = bounds_non_empty
+    bounds_empty = bounds_empty, bounds_non_empty = bounds_non_empty,
+    training_empty_barcodes = allBounds$training_empty_barcodes,
+    training_nucleus_barcodes = allBounds$training_nucleus_barcodes,
+    use2DTrainingRefinement = use2DTrainingRefinement
   ))
 }
 
@@ -255,7 +272,8 @@ validateFeaturePresence <- function(cell_features, features) {
 
 createSelectionVisualization <- function(
   cell_features_labeled, bounds_empty,
-  bounds_non_empty, useCellBenderFeatures, dataset_name
+  bounds_non_empty, useCellBenderFeatures, dataset_name,
+  training_empty_barcodes = NULL, training_nucleus_barcodes = NULL
 ) {
   p1 <- plotExpressionVsIntronic(cell_features_labeled,
     title = "All cell barcodes",
@@ -265,7 +283,13 @@ createSelectionVisualization <- function(
   p2 <- cowplot::ggdraw(function() {
     plotCellTypeIntervals(
       cell_features_labeled, bounds_empty,
-      bounds_non_empty
+      bounds_non_empty,
+      training_empty_barcodes = training_empty_barcodes,
+      training_nucleus_barcodes = training_nucleus_barcodes,
+      show_1d_bounds = is.null(training_empty_barcodes) ||
+        is.null(training_nucleus_barcodes),
+      show_2d_bounds = !is.null(training_empty_barcodes) &&
+        !is.null(training_nucleus_barcodes)
     )
   })
 
@@ -385,7 +409,6 @@ filterZeroExpressionBarcodes <- function(cell_features, dgeMatrix) {
 #'   calculation. Default is 0.1.
 #' @param showPlot If TRUE, a silhouette plot will be displayed.
 #' @param verbose If TRUE, the mean silhouette score will be printed to the log
-#' @param seed The random seed to use for downsampling the data.
 #' @return The mean silhouette score for the clustering.
 #' @importFrom cluster silhouette
 #' @importFrom scales rescale
@@ -599,6 +622,7 @@ selectNucleiExemplarBounds <- function(
 labelTrainingData <- function(
   cell_features, bounds_empty, bounds_non_empty,
   maxContaminationThreshold = 0.1, useCellBenderFeatures = TRUE,
+  training_empty_barcodes = NULL, training_nucleus_barcodes = NULL,
   verbose = TRUE
 ) {
   if (useCellBenderFeatures) {
@@ -610,6 +634,8 @@ labelTrainingData <- function(
   } else {
     result <- labelTrainingDataDefault(cell_features, bounds_empty,
       bounds_non_empty,
+      training_empty_barcodes = training_empty_barcodes,
+      training_nucleus_barcodes = training_nucleus_barcodes,
       verbose = verbose
     )
   }
@@ -673,9 +699,23 @@ labelTrainingDataCBRB <- function(
 }
 
 labelTrainingDataDefault <- function(
-  cell_features, bounds_empty,
-  bounds_non_empty, verbose = TRUE
+  cell_features,
+  bounds_empty,
+  bounds_non_empty,
+  training_empty_barcodes = NULL,
+  training_nucleus_barcodes = NULL,
+  verbose = TRUE
 ) {
+  if (!is.null(training_empty_barcodes) &&
+    !is.null(training_nucleus_barcodes)) {
+    return(labelTrainingDataDefaultByBarcode(
+      cell_features = cell_features,
+      training_empty_barcodes = training_empty_barcodes,
+      training_nucleus_barcodes = training_nucleus_barcodes,
+      verbose = verbose
+    ))
+  }
+
   # Define a function to find indices based on the given bounds
   find_indices <- function(cell_features, bounds) {
     which(log10(cell_features$num_transcripts) >= bounds$umi_lower_bound &
@@ -705,6 +745,35 @@ labelTrainingDataDefault <- function(
     )
   }
   return(training_data)
+}
+
+labelTrainingDataDefaultByBarcode <- function(
+  cell_features,
+  training_empty_barcodes,
+  training_nucleus_barcodes,
+  verbose = TRUE
+) {
+  if (is.null(rownames(cell_features)) || any(rownames(cell_features) == "")) {
+    stop("Cell feature row names are required for barcode-based training labels.")
+  }
+
+  training_data <- cell_features
+  training_data$training_label_is_cell <- NA
+
+  idxEmpty <- which(rownames(training_data) %in% training_empty_barcodes)
+  idxNonEmpty <- which(rownames(training_data) %in% training_nucleus_barcodes)
+
+  training_data$training_label_is_cell[idxNonEmpty] <- TRUE
+  training_data$training_label_is_cell[idxEmpty] <- FALSE
+
+  if (verbose) {
+    log_info(
+      "Training empty/nuclei cell barcodes selected",
+      "[using 2D density-refined method]"
+    )
+  }
+
+  training_data
 }
 
 # Function to merge dataframes
@@ -1116,62 +1185,190 @@ plotExpressionVsIntronic <- function(
 }
 
 
-#' Plot the expression vs intronic content of the cells
-#' @param cell_features A data frame containing the cell features.
-#' @param bounds_empty A list containing the bounds for the empty cells.
-#' @param bounds_non_empty A list containing the bounds for the non-empty cells.
-#' @param strTitleOverride The title of the plot.  Overrides a more generic
-#'   title.
-#' @param cex.axis The size of the axis text.
-#' @param cex.lab The size of the axis labels.
-#' @param cex.main The size of the main title.
-#' @importFrom graphics par smoothScatter title rect
+
+#' Plot the training exemplar selection intervals
+#'
+#' This function plots log10 UMI count versus pct_intronic for all cell barcodes
+#' and overlays the selected empty-droplet and nucleus exemplar regions. The
+#' original one-dimensional HDR selections are shown as rectangular bounds when
+#' `show_1d_bounds` is `TRUE`. If barcode lists from the two-dimensional HDR
+#' refinement are supplied, their selected outer edges are drawn as convex hulls
+#' when `show_2d_bounds` is `TRUE`.
+#'
+#' The two-dimensional hulls are used only for visualization. The actual
+#' training labels are determined upstream from the selected barcode lists.
+#'
+#' @param cell_features A data frame containing barcode-level features. The
+#'   data frame must contain `num_transcripts`, `pct_intronic`, and
+#'   `training_label_is_cell`. If two-dimensional bounds are plotted, row names
+#'   must contain the cell barcode identifiers used in
+#'   `training_empty_barcodes` and `training_nucleus_barcodes`.
+#' @param bounds_empty A one-row data frame containing the rectangular
+#'   empty-droplet exemplar bounds. Expected columns are `umi_lower_bound`,
+#'   `umi_upper_bound`, `intronic_lower_bound`, and `intronic_upper_bound`.
+#' @param bounds_non_empty A one-row data frame containing the rectangular
+#'   nucleus exemplar bounds. Expected columns are `umi_lower_bound`,
+#'   `umi_upper_bound`, `intronic_lower_bound`, and `intronic_upper_bound`.
+#' @param training_empty_barcodes Optional character vector of empty-droplet
+#'   exemplar barcodes selected by the two-dimensional HDR refinement.
+#' @param training_nucleus_barcodes Optional character vector of nucleus
+#'   exemplar barcodes selected by the two-dimensional HDR refinement.
+#' @param show_1d_bounds Logical scalar. If `TRUE`, draw the rectangular
+#'   one-dimensional HDR bounds for empty droplets and nuclei.
+#' @param show_2d_bounds Logical scalar. If `TRUE`, draw convex hulls around
+#'   the supplied two-dimensional refined empty-droplet and nucleus exemplar
+#'   barcodes.
+#' @param strTitleOverride Optional character scalar. If supplied, use this as
+#'   the plot title instead of the default training-exemplar summary.
+#' @param cex.axis Numeric scalar controlling axis tick-label size.
+#' @param cex.lab Numeric scalar controlling axis label size.
+#' @param cex.main Numeric scalar controlling title size.
+#'
+#' @return Invisibly returns `NULL`. The function is called for its base R
+#'   plotting side effect.
+#' @importFrom graphics par smoothScatter title rect lines
+#' @importFrom grDevices chull
 #' @noRd
 plotCellTypeIntervals <- function(
   cell_features, bounds_empty, bounds_non_empty,
+  training_empty_barcodes = NULL,
+  training_nucleus_barcodes = NULL,
+  show_1d_bounds = TRUE,
+  show_2d_bounds = TRUE,
   strTitleOverride = NULL, cex.axis = 0.6, cex.lab = 0.7, cex.main = 0.65
 ) {
   par(mar = c(2, 2, 2, 1), mgp = c(0.8, 0.25, 0), tck = -0.02)
 
-  # how many cell barcodes in the training set?
-  num_training_cells <- length(which(cell_features$training_label_is_cell))
+  drawBarcodeHull <- function(
+    cell_features,
+    selected_barcodes,
+    border,
+    lwd = 2,
+    lty = "13"
+  ) {
+    if (is.null(selected_barcodes) || length(selected_barcodes) < 3) {
+      return(invisible(NULL))
+    }
 
-  smoothScatter(log10(cell_features$num_transcripts),
+    if (is.null(rownames(cell_features))) {
+      return(invisible(NULL))
+    }
+
+    idx <- rownames(cell_features) %in% selected_barcodes
+
+    if (sum(idx) < 3) {
+      return(invisible(NULL))
+    }
+
+    x <- log10(cell_features$num_transcripts[idx])
+    y <- cell_features$pct_intronic[idx]
+
+    keep <- is.finite(x) & is.finite(y)
+    x <- x[keep]
+    y <- y[keep]
+
+    if (length(x) < 3) {
+      return(invisible(NULL))
+    }
+
+    hull_idx <- grDevices::chull(x, y)
+    hull_idx <- c(hull_idx, hull_idx[1])
+
+    graphics::lines(
+      x[hull_idx],
+      y[hull_idx],
+      col = border,
+      lwd = lwd,
+      lty = lty
+    )
+
+    invisible(NULL)
+  }
+
+  num_training_empty <- sum(
+    !is.na(cell_features$training_label_is_cell) &
+      !cell_features$training_label_is_cell
+  )
+  num_training_nuclei <- sum(
+    !is.na(cell_features$training_label_is_cell) &
+      cell_features$training_label_is_cell
+  )
+
+  graphics::smoothScatter(
+    log10(cell_features$num_transcripts),
     cell_features$pct_intronic,
     xlim = log10_UMI_AXIS_RANGE_NEW,
-    ylim = c(0, 1), xlab = "log10( UMIs )", ylab = "intronic",
-    main = "", axes = TRUE, cex.axis = cex.axis, cex.lab = cex.lab
+    ylim = c(0, 1),
+    xlab = "log10( UMIs )",
+    ylab = "intronic",
+    main = "",
+    axes = TRUE,
+    cex.axis = cex.axis,
+    cex.lab = cex.lab
   )
 
-  strTitle <- paste("SVM Training -- initial nuclei exemplars selected [",
-    num_training_cells, "]",
-    sep = ""
+  strTitle <- paste0(
+    "SVM Training -- empty [",
+    num_training_empty,
+    "] nuclei [",
+    num_training_nuclei,
+    "]"
   )
-  # optionally override title.
+
   if (!is.null(strTitleOverride)) {
     strTitle <- strTitleOverride
   }
 
-  title(main = strTitle, line = 1, col.main = "black", cex.main = cex.main)
-
-  graphics::rect(bounds_empty$umi_lower_bound,
-    bounds_empty$intronic_lower_bound,
-    bounds_empty$umi_upper_bound,
-    bounds_empty$intronic_upper_bound,
-    border = "red", lwd = 3, lty = 1
+  graphics::title(
+    main = strTitle,
+    line = 1,
+    col.main = "black",
+    cex.main = cex.main
   )
 
-  graphics::rect(bounds_non_empty$umi_lower_bound,
-    bounds_non_empty$intronic_lower_bound,
-    bounds_non_empty$umi_upper_bound,
-    bounds_non_empty$intronic_upper_bound,
-    border = "green", lwd = 3, lty = 1
-  )
+  if (show_1d_bounds) {
+    graphics::rect(
+      bounds_empty$umi_lower_bound,
+      bounds_empty$intronic_lower_bound,
+      bounds_empty$umi_upper_bound,
+      bounds_empty$intronic_upper_bound,
+      border = "red",
+      lwd = 2,
+      lty = 1
+    )
 
-  # reset par to defaults.  trying to save the original PAR and
-  # reset it was breaking.
+    graphics::rect(
+      bounds_non_empty$umi_lower_bound,
+      bounds_non_empty$intronic_lower_bound,
+      bounds_non_empty$umi_upper_bound,
+      bounds_non_empty$intronic_upper_bound,
+      border = "green",
+      lwd = 2,
+      lty = 1
+    )
+  }
+
+  if (show_2d_bounds) {
+    drawBarcodeHull(
+      cell_features = cell_features,
+      selected_barcodes = training_empty_barcodes,
+      border = "red",
+      lwd = 4,
+      lty = 1
+    )
+
+    drawBarcodeHull(
+      cell_features = cell_features,
+      selected_barcodes = training_nucleus_barcodes,
+      border = "green",
+      lwd = 4,
+      lty = 1
+    )
+  }
+
   par(mar = c(5.1, 4.1, 4.1, 2.1), mgp = c(3, 1, 0), tck = NA)
 }
+
 
 plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
   strTitle <- "Selected Nuclei"
