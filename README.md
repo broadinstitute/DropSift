@@ -38,7 +38,7 @@ Before committing changes, ensure the following steps are run:
 -   Apply consistent code styling:
 
     ``` r
-    styler::style_pkg()
+    styler::cache_deactivate(); styler::style_pkg()
     ```
 
     Running these steps locally helps prevent avoidable CI failures.

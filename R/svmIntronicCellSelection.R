@@ -1185,7 +1185,6 @@ plotExpressionVsIntronic <- function(
 }
 
 
-
 #' Plot the training exemplar selection intervals
 #'
 #' This function plots log10 UMI count versus pct_intronic for all cell barcodes
