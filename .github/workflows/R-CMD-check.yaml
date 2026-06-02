@@ -81,7 +81,7 @@ jobs:
             git status --porcelain
             git diff
             echo
-            echo "Try running roxygen2::roxygenize() and styler::style_pkg() locally then commit the changes."
+            echo "Try running 'roxygen2::roxygenize()' and 'styler::cache_deactivate(); styler::style_pkg()' locally then commit the changes."
             exit 1
           else
             echo "No files were modified"
