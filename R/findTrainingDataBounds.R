@@ -692,13 +692,13 @@ makeDebrisFilteredThresholdVector <- function(
 }
 
 getTrainingLabelIndices <- function(cell_features_labeled) {
-  is_labeled <- !is.na(cell_features_labeled$training_label_is_cell)
+  if (!"training_label_class" %in% colnames(cell_features_labeled)) {
+    return(list(empty_idx = integer(0), nucleus_idx = integer(0)))
+  }
 
   list(
-    empty_idx = which(is_labeled &
-      !cell_features_labeled$training_label_is_cell),
-    nucleus_idx = which(is_labeled &
-      cell_features_labeled$training_label_is_cell)
+    empty_idx = which(cell_features_labeled$training_label_class == "empty"),
+    nucleus_idx = which(cell_features_labeled$training_label_class == "nucleus")
   )
 }
 
@@ -1026,10 +1026,12 @@ finalizeTrainingResults <- function(
       verbose = FALSE
     )
 
-  numEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
-    !cell_features_labeled$training_label_is_cell)
-  numNonEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
-    cell_features_labeled$training_label_is_cell)
+  numEmpty <- sum(cell_features_labeled$training_label_class == "empty",
+    na.rm = TRUE
+  )
+  numNonEmpty <- sum(cell_features_labeled$training_label_class == "nucleus",
+    na.rm = TRUE
+  )
   numDebris <- sum(cell_features_labeled$training_label_class == "debris",
     na.rm = TRUE
   )
@@ -1060,14 +1062,30 @@ finalizeTrainingResults <- function(
   ))
 }
 
+
+constrainDebrisBounds <- function(
+  bounds,
+  umiThreshold,
+  debris_intronic_floor
+) {
+  bounds$umi_lower_bound <- max(bounds$umi_lower_bound, umiThreshold)
+  bounds$intronic_lower_bound <- max(bounds$intronic_lower_bound, 0)
+  bounds$intronic_upper_bound <- min(
+    bounds$intronic_upper_bound,
+    debris_intronic_floor
+  )
+
+  bounds
+}
+
 selectDebrisTrainingBounds <- function(
-    df,
-    umiThreshold,
-    debris_intronic_floor,
-    min_num = 10,
-    pctDensity = 95,
-    debris_start_quantile = 0.5,
-    umi_upper_quantile = 0.995
+  df,
+  umiThreshold,
+  debris_intronic_floor,
+  min_num = 10,
+  pctDensity = 95,
+  debris_start_quantile = 0.5,
+  umi_upper_quantile = 0.995
 ) {
   empty_result <- makeEmptyDebrisTrainingBoundsResult()
 
@@ -1117,11 +1135,17 @@ selectDebrisTrainingBounds <- function(
     return(empty_result)
   }
 
+  bounds_debris_intronic <- constrainDebrisBounds(
+    bounds = bounds_debris_intronic,
+    umiThreshold = umiThreshold,
+    debris_intronic_floor = debris_intronic_floor
+  )
+
   df_debris_filtered <- df_debris_density[
     df_debris_density$pct_intronic >=
       bounds_debris_intronic$intronic_lower_bound &
       df_debris_density$pct_intronic <=
-      bounds_debris_intronic$intronic_upper_bound,
+        bounds_debris_intronic$intronic_upper_bound,
   ]
 
   if (nrow(df_debris_filtered) < min_num) {
@@ -1140,9 +1164,15 @@ selectDebrisTrainingBounds <- function(
   )
 
   if (is.null(bounds_debris_transcripts) ||
-      any(is.na(bounds_debris_transcripts))) {
+    any(is.na(bounds_debris_transcripts))) {
     return(empty_result)
   }
+
+  bounds_debris_transcripts <- constrainDebrisBounds(
+    bounds = bounds_debris_transcripts,
+    umiThreshold = umiThreshold,
+    debris_intronic_floor = debris_intronic_floor
+  )
 
   bounds_debris_transcripts$umi_upper_bound <- as.numeric(stats::quantile(
     log10(df_debris_filtered$num_transcripts + 1),
@@ -1157,10 +1187,15 @@ selectDebrisTrainingBounds <- function(
     intronic_upper_bound = bounds_debris_intronic$intronic_upper_bound
   )
 
+  if (bounds_debris$umi_lower_bound >= bounds_debris$umi_upper_bound ||
+    bounds_debris$intronic_lower_bound >= bounds_debris$intronic_upper_bound) {
+    return(empty_result)
+  }
+
   selected <- log10(df_debris_density$num_transcripts + 1) >=
     bounds_debris$umi_lower_bound &
     log10(df_debris_density$num_transcripts + 1) <=
-    bounds_debris$umi_upper_bound &
+      bounds_debris$umi_upper_bound &
     df_debris_density$pct_intronic >= bounds_debris$intronic_lower_bound &
     df_debris_density$pct_intronic <= bounds_debris$intronic_upper_bound
 

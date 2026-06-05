@@ -319,21 +319,35 @@ configureFeatureColumns <- function(
 plotSvmNucleusCaller.SvmNucleusCaller <- function(svmNucleusCaller) {
   plots <- svmNucleusCaller$plots
   geneModulePlots <- svmNucleusCaller$geneModulePlots
-  featurePlot <- svmNucleusCaller$featurePlot
+  featurePlotNucleusVsEmpty <- svmNucleusCaller$featurePlotNucleusVsEmpty
+  featurePlotNucleusVsDebris <- svmNucleusCaller$featurePlotNucleusVsDebris
+  geneModuleExemplarPlot <- svmNucleusCaller$geneModuleExemplarPlot
   datasetName <- svmNucleusCaller$dataset_name
+
   if (contaminationColName %in% svmNucleusCaller$features) {
-    arrangeSVMCellSelectionPlots(plots,
+    arrangeSVMCellSelectionPlots(
+      plots,
       geneModulePlots = geneModulePlots,
-      featurePlot = featurePlot, datasetName,
-      outPDF = NULL, useOpenPDF = TRUE
+      featurePlotNucleusVsEmpty = featurePlotNucleusVsEmpty,
+      featurePlotNucleusVsDebris = featurePlotNucleusVsDebris,
+      geneModuleExemplarPlot = geneModuleExemplarPlot,
+      datasetName,
+      outPDF = NULL,
+      useOpenPDF = TRUE
     )
   } else {
-    arrangeSVMCellSelectionPlotsNoCBRB(plots,
+    arrangeSVMCellSelectionPlotsNoCBRB(
+      plots,
       geneModulePlots = geneModulePlots,
-      featurePlot = featurePlot, datasetName,
-      outPDF = NULL, useOpenPDF = TRUE
+      featurePlotNucleusVsEmpty = featurePlotNucleusVsEmpty,
+      featurePlotNucleusVsDebris = featurePlotNucleusVsDebris,
+      geneModuleExemplarPlot = geneModuleExemplarPlot,
+      datasetName,
+      outPDF = NULL,
+      useOpenPDF = TRUE
     )
   }
+
   invisible(svmNucleusCaller)
 }
 
@@ -367,35 +381,48 @@ plotSvmNucleusCaller.default <- function(svmNucleusCaller) {
 #' print(svmNucleusCaller)
 print.SvmNucleusCaller <- function(x, ...) {
   svmNucleusCaller <- x
+
   if (is.null(svmNucleusCaller$cellProbabilityThreshold)) {
     cellProbabilityThreshold <- "NULL"
   } else {
     cellProbabilityThreshold <- svmNucleusCaller$cellProbabilityThreshold
   }
+
+  num_selected <- length(which(
+    svmNucleusCaller$cell_features$barcode_class == "nucleus"
+  ))
+
+  num_debris <- length(which(
+    svmNucleusCaller$cell_features$barcode_class == "debris"
+  ))
+
   cat("SvmNucleusCaller object\n")
   cat("Dataset: ", svmNucleusCaller$dataset_name, "\n")
   cat("cellProbabilityThreshold: ", cellProbabilityThreshold, "\n")
   cat("maxUmisEmpty: ", svmNucleusCaller$maxUmisEmpty, "\n")
   cat(
-    "forceTwoClusterSolution: ", svmNucleusCaller$forceTwoClusterSolution,
+    "forceTwoClusterSolution: ",
+    svmNucleusCaller$forceTwoClusterSolution,
     "\n"
   )
   cat(
-    "use2DTrainingRefinement: ", svmNucleusCaller$use2DTrainingRefinement,
+    "use2DTrainingRefinement: ",
+    svmNucleusCaller$use2DTrainingRefinement,
     "\n"
   )
   cat(
-    "featureColumns: ", paste(svmNucleusCaller$features, collapse = ", "),
+    "featureColumns: ",
+    paste(svmNucleusCaller$features, collapse = ", "),
     "\n"
   )
   cat(
-    "Input cell features: ", nrow(svmNucleusCaller$cell_features),
+    "Input cell features: ",
+    nrow(svmNucleusCaller$cell_features),
     " cells\n"
   )
-  cat(
-    "Number of cells selected: ",
-    length(which(as.logical(svmNucleusCaller$cell_features$is_cell))), "\n"
-  )
+  cat("Number of cells selected: ", num_selected, "\n")
+  cat("Number of debris barcodes selected: ", num_debris, "\n")
+
   invisible(svmNucleusCaller)
 }
 
@@ -438,13 +465,34 @@ getCBRBArgs.SvmNucleusCaller <- function(svmNucleusCaller) {
   if (contaminationColName %in% svmNucleusCaller$features) {
     stop("getCBRBArgs should only be used when useCBRBFeatures is false.")
   }
-  df <- svmNucleusCaller$cell_features
-  threshold_total_droplets <- round(mean(df[df$training_label_is_cell ==
-    FALSE, ]$num_transcripts, na.rm = TRUE))
-  total_droplets_included <-
-    length(which(df$num_transcripts > threshold_total_droplets))
 
-  expected_cells <- length(which(df$is_cell == TRUE))
+  df <- svmNucleusCaller$cell_features
+
+  if (!"training_label_class" %in% colnames(df)) {
+    stop("training_label_class is required to estimate CBRB arguments.")
+  }
+
+  if (!"barcode_class" %in% colnames(df)) {
+    stop("barcode_class is required to estimate CBRB arguments.")
+  }
+
+  idxEmpty <- which(df$training_label_class == "empty")
+
+  if (length(idxEmpty) == 0) {
+    stop("No empty exemplars found. Cannot estimate CBRB arguments.")
+  }
+
+  threshold_total_droplets <- round(mean(
+    df$num_transcripts[idxEmpty],
+    na.rm = TRUE
+  ))
+
+  total_droplets_included <- length(which(
+    df$num_transcripts > threshold_total_droplets
+  ))
+
+  expected_cells <- length(which(df$barcode_class == "nucleus"))
+
   return(list(
     total_droplets_included = total_droplets_included,
     expected_cells = expected_cells
@@ -454,4 +502,50 @@ getCBRBArgs.SvmNucleusCaller <- function(svmNucleusCaller) {
 #' @export
 getCBRBArgs.default <- function(svmNucleusCaller) {
   stop("getCBRBArgs not implemented for this class")
+}
+
+############################################
+# Write the annotated output as a text file
+############################################
+
+#' Write annotated cell features from an SvmNucleusCaller object
+#'
+#' Write the final annotated cell-feature table from an `SvmNucleusCaller`
+#' object to a tab-separated file.  This contains the original inputs, plus
+#' gene module scores, labels for each cell barcode if it is an exemplar class,
+#' etc.
+#'
+#' @param svmNucleusCaller An object of class `SvmNucleusCaller`.
+#' @param outFile Character scalar giving the output path.
+#'
+#' @return Invisibly returns `outFile`.
+#'
+#' @export
+writeAnnotatedCellFeatures <- function(svmNucleusCaller, outFile) {
+  UseMethod("writeAnnotatedCellFeatures", svmNucleusCaller)
+}
+
+
+#' @rdname writeAnnotatedCellFeatures
+#' @export
+writeAnnotatedCellFeatures.SvmNucleusCaller <- function(
+  svmNucleusCaller,
+  outFile
+) {
+  utils::write.table(
+    svmNucleusCaller$cell_features,
+    file = outFile,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE,
+    col.names = TRUE
+  )
+
+  invisible(outFile)
+}
+
+#' @rdname writeAnnotatedCellFeatures
+#' @export
+writeAnnotatedCellFeatures.default <- function(svmNucleusCaller, outFile) {
+  stop("writeAnnotatedCellFeatures is not implemented for this class.")
 }

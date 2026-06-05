@@ -35,7 +35,10 @@ test_that("runIntronicSVM", {
     header = TRUE, stringsAsFactors = FALSE
   )
 
-  selectedNuclei <- result[which(result$is_cell == T), ]$cell_barcode
+  selectedNuclei <- result[
+    which(result[["barcode_class"]] == "nucleus"),
+  ]$cell_barcode
+
   expect_equal(length(selectedNuclei), 372)
 
   cbrb_args_result <- read.table(out_cbrb_args_file,
