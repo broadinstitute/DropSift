@@ -878,26 +878,26 @@ selectNucleiExemplarBounds <- function(
 #'
 #' @noRd
 labelTrainingData <- function(
-    cell_features, bounds_empty, bounds_non_empty,
-    maxContaminationThreshold = 0.1, useCBRBInitialization = TRUE,
-    training_empty_barcodes = NULL, training_nucleus_barcodes = NULL,
-    training_debris_barcodes = NULL, bounds_debris = NULL,
-    verbose = TRUE
+  cell_features, bounds_empty, bounds_non_empty,
+  maxContaminationThreshold = 0.1, useCBRBInitialization = TRUE,
+  training_empty_barcodes = NULL, training_nucleus_barcodes = NULL,
+  training_debris_barcodes = NULL, bounds_debris = NULL,
+  verbose = TRUE
 ) {
   if (useCBRBInitialization) {
     result <- labelTrainingDataCBRB(cell_features, bounds_empty,
-                                    bounds_non_empty,
-                                    maxContaminationThreshold = maxContaminationThreshold,
-                                    verbose = verbose
+      bounds_non_empty,
+      maxContaminationThreshold = maxContaminationThreshold,
+      verbose = verbose
     )
   } else {
     result <- labelTrainingDataDefault(cell_features, bounds_empty,
-                                       bounds_non_empty,
-                                       training_empty_barcodes = training_empty_barcodes,
-                                       training_nucleus_barcodes = training_nucleus_barcodes,
-                                       training_debris_barcodes = training_debris_barcodes,
-                                       bounds_debris = bounds_debris,
-                                       verbose = verbose
+      bounds_non_empty,
+      training_empty_barcodes = training_empty_barcodes,
+      training_nucleus_barcodes = training_nucleus_barcodes,
+      training_debris_barcodes = training_debris_barcodes,
+      bounds_debris = bounds_debris,
+      verbose = verbose
     )
   }
   return(result)

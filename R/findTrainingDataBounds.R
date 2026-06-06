@@ -77,7 +77,6 @@ findTrainingDataBounds <- function(
   intronic_floor_fraction = 0.9, debris_pct_intronic_prior = 0.25,
   use2DTrainingRefinement = FALSE, verbose = FALSE
 ) {
-
   # If using CBRB initialization, use the CBRB-specific bounds method.
   if (useCBRBInitialization) {
     return(findTrainingDataBoundsCBRB(cell_features,
