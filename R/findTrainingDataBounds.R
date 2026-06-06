@@ -2,20 +2,27 @@
 # HIGH LEVEL BOUNDS FUNCTIONS
 #####################
 
-#' Find exemplars for nuclei and empty droplets
+#' Find exemplar bounds for SVM training
 #'
-#' This function selects exemplar barcodes for empty droplets and nuclei. These
-#' exemplars are used downstream to train the SVM classifier. When CellBender
-#' features are not used, the algorithm first estimates a UMI threshold that
-#' separates the likely-empty and likely-nucleus barcode partitions. It then
-#' selects high-density exemplar regions within each partition using log10 UMI
-#' counts and pct_intronic.
+#' This function selects exemplar barcode regions for downstream SVM training.
+#' The initialization strategy is controlled by `useCBRBInitialization`.
 #'
-#' In the non-CellBender path, low-intronic debris can sometimes fall in the
+#' When `useCBRBInitialization` is `TRUE`, exemplar bounds are selected with
+#' the CellBender remove-background initialization path. This path is intended
+#' for empty-vs-nucleus initialization and does not define debris exemplars.
+#'
+#' When `useCBRBInitialization` is `FALSE`, exemplar bounds are selected with
+#' the default density-based initialization. The algorithm first estimates a UMI
+#' threshold that separates likely-empty and likely-nucleus barcode partitions.
+#' It then selects high-density exemplar regions within each partition using
+#' log10 UMI counts and pct_intronic. This path can also define debris
+#' exemplars.
+#'
+#' In the default density-based path, low-intronic debris can fall in the
 #' high-UMI partition and distort nucleus exemplar selection. To reduce this
 #' failure mode, the algorithm applies an intronic floor before estimating the
-#' nucleus exemplar bounds. The observed floor is computed from the empty droplet
-#' exemplar bounds:
+#' nucleus exemplar bounds. The observed floor is computed from the empty
+#' droplet exemplar bounds:
 #'
 #'   observed_intronic_floor =
 #'       intronic_floor_fraction * bounds_empty$intronic_lower_bound
@@ -32,43 +39,47 @@
 #' preventing high-intronic empty droplet clusters from forcing an overly strict
 #' nucleus intronic cutoff.
 #'
-#' @param cell_features The cell features data frame.
-#' @param max_umis_empty Exclude cell barcodes from analysis with fewer than
-#'   this many UMIs. This threshold should exclude noisy barcodes, but not
-#'   exclude the empty droplet cloud.
-#' @param useCellBenderFeatures When true, the CellBender remove-background
-#'   feature frac_contamination is used for cell selection.
-#' @param forceTwoClusterSolution When true, the function will attempt to find a
-#'   solution with two clusters. This may be useful when the data is overloaded
-#'   and breaks the normal assumptions, but may find suboptimal solutions for
-#'   other data sets.
+#' @param cell_features A data frame containing barcode-level features.
+#' @param max_umis_empty Exclude barcodes with fewer than this many UMIs from
+#'   exemplar-bound detection. This threshold should remove noisy low-count
+#'   barcodes while retaining the empty droplet cloud.
+#' @param useCBRBInitialization Logical scalar. If `TRUE`, use the CBRB
+#'   initialization path to estimate empty and nucleus exemplar bounds. If
+#'   `FALSE`, use the default density-based initialization, which can also
+#'   identify debris exemplars.
+#' @param forceTwoClusterSolution Logical scalar. If `TRUE`, attempt to find a
+#'   two-cluster solution by separating the two highest-density peaks. This can
+#'   help overloaded datasets but may be suboptimal for typical datasets.
 #' @param intronic_floor_fraction Numeric scalar. Multiplier applied to the
 #'   empty droplet intronic lower bound when computing the observed intronic
 #'   floor used to remove low-intronic debris from the candidate nucleus
 #'   partition.
-#' @param debris_pct_intronic_prior Numeric scalar. Prior expectation for the
-#'   upper pct_intronic range of debris-like barcodes. When filtering the
-#'   high-UMI candidate nucleus partition, the algorithm uses the smaller of
-#'   this value and the empty-derived intronic lower bound learned from the
-#'   empty droplet density as the intronic floor. This prevents a high-intronic
-#'   empty droplet cluster from imposing an unrealistically high debris-removal
-#'   threshold.  Operationally, candidate nuclei must have pct_intronic
-#'   greater than or equal to the smaller of this prior and the adjusted
-#'   empty-derived intronic lower bound.
-#' @param verbose Print verbose output to log.
+#' @param debris_pct_intronic_prior Numeric scalar. Prior upper bound for the
+#'   pct_intronic range of debris-like barcodes. The applied intronic floor is
+#'   the smaller of this value and the adjusted empty-derived intronic lower
+#'   bound.
+#' @param use2DTrainingRefinement Logical scalar. If `TRUE`, refine default
+#'   density-based empty and nucleus exemplar selections with a two-dimensional
+#'   HDR component selection. This is experimental and is not applied to debris.
+#' @param verbose Logical scalar. If `TRUE`, emit diagnostic log messages.
 #'
-#' @return A list containing the bounds for the empty droplet and nuclei
-#'   exemplars.
+#' @return A list containing exemplar bounds and selected training barcode
+#'   vectors. The default density-based path may include `bounds_debris` and
+#'   `training_debris_barcodes`; the CBRB initialization path does not define
+#'   debris exemplars.
+#'
 #' @import logger
 #' @noRd
+#'
 findTrainingDataBounds <- function(
   cell_features, max_umis_empty = 50,
-  useCellBenderFeatures = TRUE, forceTwoClusterSolution = FALSE,
+  useCBRBInitialization = TRUE, forceTwoClusterSolution = FALSE,
   intronic_floor_fraction = 0.9, debris_pct_intronic_prior = 0.25,
   use2DTrainingRefinement = FALSE, verbose = FALSE
 ) {
-  # If using CellBender features, use the specific CBRB method.
-  if (useCellBenderFeatures) {
+
+  # If using CBRB initialization, use the CBRB-specific bounds method.
+  if (useCBRBInitialization) {
     return(findTrainingDataBoundsCBRB(cell_features,
       max_umis_empty = max_umis_empty
     ))
@@ -498,7 +509,7 @@ findTrainingDataBoundsDefaultIterative <- function(
         bounds$bounds_empty,
         bounds$bounds_non_empty,
         NULL,
-        useCellBenderFeatures = FALSE,
+        useCBRBInitialization = FALSE,
         training_empty_barcodes = bounds$training_empty_barcodes,
         training_nucleus_barcodes = bounds$training_nucleus_barcodes,
         verbose = FALSE
@@ -1018,7 +1029,7 @@ finalizeTrainingResults <- function(
   cell_features_labeled <-
     labelTrainingData(df_filtered, best_bounds$bounds_empty,
       best_bounds$bounds_non_empty, NULL,
-      useCellBenderFeatures = FALSE,
+      useCBRBInitialization = FALSE,
       training_empty_barcodes = best_bounds$training_empty_barcodes,
       training_nucleus_barcodes = best_bounds$training_nucleus_barcodes,
       training_debris_barcodes = debris_result$training_debris_barcodes,
