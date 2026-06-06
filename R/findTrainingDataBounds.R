@@ -2,20 +2,27 @@
 # HIGH LEVEL BOUNDS FUNCTIONS
 #####################
 
-#' Find exemplars for nuclei and empty droplets
+#' Find exemplar bounds for SVM training
 #'
-#' This function selects exemplar barcodes for empty droplets and nuclei. These
-#' exemplars are used downstream to train the SVM classifier. When CellBender
-#' features are not used, the algorithm first estimates a UMI threshold that
-#' separates the likely-empty and likely-nucleus barcode partitions. It then
-#' selects high-density exemplar regions within each partition using log10 UMI
-#' counts and pct_intronic.
+#' This function selects exemplar barcode regions for downstream SVM training.
+#' The initialization strategy is controlled by `useCBRBInitialization`.
 #'
-#' In the non-CellBender path, low-intronic debris can sometimes fall in the
+#' When `useCBRBInitialization` is `TRUE`, exemplar bounds are selected with
+#' the CellBender remove-background initialization path. This path is intended
+#' for empty-vs-nucleus initialization and does not define debris exemplars.
+#'
+#' When `useCBRBInitialization` is `FALSE`, exemplar bounds are selected with
+#' the default density-based initialization. The algorithm first estimates a UMI
+#' threshold that separates likely-empty and likely-nucleus barcode partitions.
+#' It then selects high-density exemplar regions within each partition using
+#' log10 UMI counts and pct_intronic. This path can also define debris
+#' exemplars.
+#'
+#' In the default density-based path, low-intronic debris can fall in the
 #' high-UMI partition and distort nucleus exemplar selection. To reduce this
 #' failure mode, the algorithm applies an intronic floor before estimating the
-#' nucleus exemplar bounds. The observed floor is computed from the empty droplet
-#' exemplar bounds:
+#' nucleus exemplar bounds. The observed floor is computed from the empty
+#' droplet exemplar bounds:
 #'
 #'   observed_intronic_floor =
 #'       intronic_floor_fraction * bounds_empty$intronic_lower_bound
@@ -32,43 +39,46 @@
 #' preventing high-intronic empty droplet clusters from forcing an overly strict
 #' nucleus intronic cutoff.
 #'
-#' @param cell_features The cell features data frame.
-#' @param max_umis_empty Exclude cell barcodes from analysis with fewer than
-#'   this many UMIs. This threshold should exclude noisy barcodes, but not
-#'   exclude the empty droplet cloud.
-#' @param useCellBenderFeatures When true, the CellBender remove-background
-#'   feature frac_contamination is used for cell selection.
-#' @param forceTwoClusterSolution When true, the function will attempt to find a
-#'   solution with two clusters. This may be useful when the data is overloaded
-#'   and breaks the normal assumptions, but may find suboptimal solutions for
-#'   other data sets.
+#' @param cell_features A data frame containing barcode-level features.
+#' @param max_umis_empty Exclude barcodes with fewer than this many UMIs from
+#'   exemplar-bound detection. This threshold should remove noisy low-count
+#'   barcodes while retaining the empty droplet cloud.
+#' @param useCBRBInitialization Logical scalar. If `TRUE`, use the CBRB
+#'   initialization path to estimate empty and nucleus exemplar bounds. If
+#'   `FALSE`, use the default density-based initialization, which can also
+#'   identify debris exemplars.
+#' @param forceTwoClusterSolution Logical scalar. If `TRUE`, attempt to find a
+#'   two-cluster solution by separating the two highest-density peaks. This can
+#'   help overloaded datasets but may be suboptimal for typical datasets.
 #' @param intronic_floor_fraction Numeric scalar. Multiplier applied to the
 #'   empty droplet intronic lower bound when computing the observed intronic
 #'   floor used to remove low-intronic debris from the candidate nucleus
 #'   partition.
-#' @param debris_pct_intronic_prior Numeric scalar. Prior expectation for the
-#'   upper pct_intronic range of debris-like barcodes. When filtering the
-#'   high-UMI candidate nucleus partition, the algorithm uses the smaller of
-#'   this value and the empty-derived intronic lower bound learned from the
-#'   empty droplet density as the intronic floor. This prevents a high-intronic
-#'   empty droplet cluster from imposing an unrealistically high debris-removal
-#'   threshold.  Operationally, candidate nuclei must have pct_intronic
-#'   greater than or equal to the smaller of this prior and the adjusted
-#'   empty-derived intronic lower bound.
-#' @param verbose Print verbose output to log.
+#' @param debris_pct_intronic_prior Numeric scalar. Prior upper bound for the
+#'   pct_intronic range of debris-like barcodes. The applied intronic floor is
+#'   the smaller of this value and the adjusted empty-derived intronic lower
+#'   bound.
+#' @param use2DTrainingRefinement Logical scalar. If `TRUE`, refine default
+#'   density-based empty and nucleus exemplar selections with a two-dimensional
+#'   HDR component selection. This is experimental and is not applied to debris.
+#' @param verbose Logical scalar. If `TRUE`, emit diagnostic log messages.
 #'
-#' @return A list containing the bounds for the empty droplet and nuclei
-#'   exemplars.
+#' @return A list containing exemplar bounds and selected training barcode
+#'   vectors. The default density-based path may include `bounds_debris` and
+#'   `training_debris_barcodes`; the CBRB initialization path does not define
+#'   debris exemplars.
+#'
 #' @import logger
 #' @noRd
+#'
 findTrainingDataBounds <- function(
   cell_features, max_umis_empty = 50,
-  useCellBenderFeatures = TRUE, forceTwoClusterSolution = FALSE,
+  useCBRBInitialization = TRUE, forceTwoClusterSolution = FALSE,
   intronic_floor_fraction = 0.9, debris_pct_intronic_prior = 0.25,
   use2DTrainingRefinement = FALSE, verbose = FALSE
 ) {
-  # If using CellBender features, use the specific CBRB method.
-  if (useCellBenderFeatures) {
+  # If using CBRB initialization, use the CBRB-specific bounds method.
+  if (useCBRBInitialization) {
     return(findTrainingDataBoundsCBRB(cell_features,
       max_umis_empty = max_umis_empty
     ))
@@ -498,7 +508,7 @@ findTrainingDataBoundsDefaultIterative <- function(
         bounds$bounds_empty,
         bounds$bounds_non_empty,
         NULL,
-        useCellBenderFeatures = FALSE,
+        useCBRBInitialization = FALSE,
         training_empty_barcodes = bounds$training_empty_barcodes,
         training_nucleus_barcodes = bounds$training_nucleus_barcodes,
         verbose = FALSE
@@ -579,10 +589,21 @@ findTrainingDataBoundsDefaultIterative <- function(
   resultDF <- updateResultsWithCandidateScores(resultDF, candidate_results)
   best_candidate <- selectBestCandidateBySelectionScore(candidate_results)
 
+  debris_result <- NULL
+  if (!is.null(best_candidate)) {
+    debris_result <- selectDebrisTrainingBounds(
+      df = df_filtered,
+      umiThreshold = best_candidate$umiThreshold,
+      debris_intronic_floor = best_candidate$debris_intronic_floor,
+      min_num = 10
+    )
+  }
+
   finalizeTrainingResults(
     df_filtered,
     best_candidate,
-    resultDF
+    resultDF,
+    debris_result = debris_result
   )
 }
 
@@ -681,13 +702,13 @@ makeDebrisFilteredThresholdVector <- function(
 }
 
 getTrainingLabelIndices <- function(cell_features_labeled) {
-  is_labeled <- !is.na(cell_features_labeled$training_label_is_cell)
+  if (!"training_label_class" %in% colnames(cell_features_labeled)) {
+    return(list(empty_idx = integer(0), nucleus_idx = integer(0)))
+  }
 
   list(
-    empty_idx = which(is_labeled &
-      !cell_features_labeled$training_label_is_cell),
-    nucleus_idx = which(is_labeled &
-      cell_features_labeled$training_label_is_cell)
+    empty_idx = which(cell_features_labeled$training_label_class == "empty"),
+    nucleus_idx = which(cell_features_labeled$training_label_class == "nucleus")
   )
 }
 
@@ -972,7 +993,7 @@ selectBestCandidateBySelectionScore <- function(candidate_results) {
 
 
 finalizeTrainingResults <- function(
-  df_filtered, best_candidate, results
+  df_filtered, best_candidate, results, debris_result = NULL
 ) {
   if (is.null(best_candidate)) {
     log_info("Unable to find good initialization. Returning Empty Bounds")
@@ -988,28 +1009,42 @@ finalizeTrainingResults <- function(
       debris_intronic_floor_source = NA_character_,
       bounds_empty = NA,
       bounds_non_empty = NA,
+      bounds_debris = makeEmptyTrainingBoundsDF(),
       training_empty_barcodes = character(0),
       training_nucleus_barcodes = character(0),
+      training_debris_barcodes = character(0),
       resultDF = results,
       numEmpty = NA_real_,
-      numNonEmpty = NA_real_
+      numNonEmpty = NA_real_,
+      numDebris = 0
     ))
   }
 
   best_bounds <- best_candidate$bounds
+  if (is.null(debris_result)) {
+    debris_result <- makeEmptyDebrisTrainingBoundsResult()
+  }
+
   cell_features_labeled <-
     labelTrainingData(df_filtered, best_bounds$bounds_empty,
       best_bounds$bounds_non_empty, NULL,
-      useCellBenderFeatures = FALSE,
+      useCBRBInitialization = FALSE,
       training_empty_barcodes = best_bounds$training_empty_barcodes,
       training_nucleus_barcodes = best_bounds$training_nucleus_barcodes,
+      training_debris_barcodes = debris_result$training_debris_barcodes,
+      bounds_debris = debris_result$bounds_debris,
       verbose = FALSE
     )
 
-  numEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
-    !cell_features_labeled$training_label_is_cell)
-  numNonEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
-    cell_features_labeled$training_label_is_cell)
+  numEmpty <- sum(cell_features_labeled$training_label_class == "empty",
+    na.rm = TRUE
+  )
+  numNonEmpty <- sum(cell_features_labeled$training_label_class == "nucleus",
+    na.rm = TRUE
+  )
+  numDebris <- sum(cell_features_labeled$training_label_class == "debris",
+    na.rm = TRUE
+  )
 
   return(list(
     best_silhouette = best_candidate$silhouette,
@@ -1026,12 +1061,169 @@ finalizeTrainingResults <- function(
       best_candidate$debris_intronic_floor_source,
     bounds_empty = best_bounds$bounds_empty,
     bounds_non_empty = best_bounds$bounds_non_empty,
+    bounds_debris = debris_result$bounds_debris,
     training_empty_barcodes = best_bounds$training_empty_barcodes,
     training_nucleus_barcodes = best_bounds$training_nucleus_barcodes,
+    training_debris_barcodes = debris_result$training_debris_barcodes,
     resultDF = results,
     numEmpty = numEmpty,
-    numNonEmpty = numNonEmpty
+    numNonEmpty = numNonEmpty,
+    numDebris = numDebris
   ))
+}
+
+
+constrainDebrisBounds <- function(
+  bounds,
+  umiThreshold,
+  debris_intronic_floor
+) {
+  bounds$umi_lower_bound <- max(bounds$umi_lower_bound, umiThreshold)
+  bounds$intronic_lower_bound <- max(bounds$intronic_lower_bound, 0)
+  bounds$intronic_upper_bound <- min(
+    bounds$intronic_upper_bound,
+    debris_intronic_floor
+  )
+
+  bounds
+}
+
+selectDebrisTrainingBounds <- function(
+  df,
+  umiThreshold,
+  debris_intronic_floor,
+  min_num = 10,
+  pctDensity = 95,
+  debris_start_quantile = 0.5,
+  umi_upper_quantile = 0.995
+) {
+  empty_result <- makeEmptyDebrisTrainingBoundsResult()
+
+  if (is.na(umiThreshold) || is.na(debris_intronic_floor)) {
+    return(empty_result)
+  }
+
+  x <- log10(df$num_transcripts + 1)
+
+  idx_debris_candidate <- which(
+    x > umiThreshold &
+      df$pct_intronic < debris_intronic_floor
+  )
+
+  if (length(idx_debris_candidate) < min_num) {
+    return(empty_result)
+  }
+
+  debris_umi_floor <- as.numeric(stats::quantile(
+    x[idx_debris_candidate],
+    probs = debris_start_quantile,
+    na.rm = TRUE
+  ))
+
+  idx_debris_for_density <- idx_debris_candidate[
+    x[idx_debris_candidate] >= debris_umi_floor
+  ]
+
+  if (length(idx_debris_for_density) < min_num) {
+    return(empty_result)
+  }
+
+  df_debris_density <- df[idx_debris_for_density, ]
+
+  bounds_debris_intronic <- tryCatch(
+    getHighestDensityIntervalsEnforcedSmoothing(
+      df_debris_density,
+      yAxisFeature = "pct_intronic",
+      pctDensity = pctDensity,
+      maxPeaksExpected = 1,
+      showPlot = FALSE
+    ),
+    error = function(e) NULL
+  )
+
+  if (is.null(bounds_debris_intronic) || any(is.na(bounds_debris_intronic))) {
+    return(empty_result)
+  }
+
+  bounds_debris_intronic <- constrainDebrisBounds(
+    bounds = bounds_debris_intronic,
+    umiThreshold = umiThreshold,
+    debris_intronic_floor = debris_intronic_floor
+  )
+
+  df_debris_filtered <- df_debris_density[
+    df_debris_density$pct_intronic >=
+      bounds_debris_intronic$intronic_lower_bound &
+      df_debris_density$pct_intronic <=
+        bounds_debris_intronic$intronic_upper_bound,
+  ]
+
+  if (nrow(df_debris_filtered) < min_num) {
+    return(empty_result)
+  }
+
+  bounds_debris_transcripts <- tryCatch(
+    getHighestDensityIntervalsEnforcedSmoothing(
+      df_debris_filtered,
+      yAxisFeature = "pct_intronic",
+      pctDensity = pctDensity,
+      maxPeaksExpected = 1,
+      showPlot = FALSE
+    ),
+    error = function(e) NULL
+  )
+
+  if (is.null(bounds_debris_transcripts) ||
+    any(is.na(bounds_debris_transcripts))) {
+    return(empty_result)
+  }
+
+  bounds_debris_transcripts <- constrainDebrisBounds(
+    bounds = bounds_debris_transcripts,
+    umiThreshold = umiThreshold,
+    debris_intronic_floor = debris_intronic_floor
+  )
+
+  bounds_debris_transcripts$umi_upper_bound <- as.numeric(stats::quantile(
+    log10(df_debris_filtered$num_transcripts + 1),
+    umi_upper_quantile,
+    na.rm = TRUE
+  ))
+
+  bounds_debris <- data.frame(
+    umi_lower_bound = bounds_debris_transcripts$umi_lower_bound,
+    umi_upper_bound = bounds_debris_transcripts$umi_upper_bound,
+    intronic_lower_bound = bounds_debris_intronic$intronic_lower_bound,
+    intronic_upper_bound = bounds_debris_intronic$intronic_upper_bound
+  )
+
+  if (bounds_debris$umi_lower_bound >= bounds_debris$umi_upper_bound ||
+    bounds_debris$intronic_lower_bound >= bounds_debris$intronic_upper_bound) {
+    return(empty_result)
+  }
+
+  selected <- log10(df_debris_density$num_transcripts + 1) >=
+    bounds_debris$umi_lower_bound &
+    log10(df_debris_density$num_transcripts + 1) <=
+      bounds_debris$umi_upper_bound &
+    df_debris_density$pct_intronic >= bounds_debris$intronic_lower_bound &
+    df_debris_density$pct_intronic <= bounds_debris$intronic_upper_bound
+
+  if (sum(selected) < min_num) {
+    return(empty_result)
+  }
+
+  list(
+    bounds_debris = bounds_debris,
+    training_debris_barcodes = rownames(df_debris_density)[selected]
+  )
+}
+
+makeEmptyDebrisTrainingBoundsResult <- function() {
+  list(
+    bounds_debris = makeEmptyTrainingBoundsDF(),
+    training_debris_barcodes = character(0)
+  )
 }
 
 ############
@@ -1583,8 +1775,10 @@ makeEmptyTrainingBoundsResult <- function(
     bounds_non_empty = makeEmptyTrainingBoundsDF(),
     bounds_empty_2d = makeEmptyTrainingBoundsDF(),
     bounds_non_empty_2d = makeEmptyTrainingBoundsDF(),
+    bounds_debris = makeEmptyTrainingBoundsDF(),
     training_empty_barcodes = character(0),
     training_nucleus_barcodes = character(0),
+    training_debris_barcodes = character(0),
     debris_intronic_floor = debris_intronic_floor
   )
 }

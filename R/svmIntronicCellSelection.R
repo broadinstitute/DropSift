@@ -203,59 +203,266 @@ callByIntronicSVM <- function(
     useCBRBInitialization <- FALSE
   }
   allBounds <- findTrainingDataBounds(cell_features, max_umis_empty,
-    useCellBenderFeatures = useCBRBInitialization,
+    useCBRBInitialization = useCBRBInitialization,
     forceTwoClusterSolution = forceTwoClusterSolution,
     use2DTrainingRefinement = use2DTrainingRefinement
   )
   bounds_empty <- allBounds$bounds_empty
   bounds_non_empty <- allBounds$bounds_non_empty
-  cell_features_labeled <- labelTrainingData(
-    cell_features, bounds_empty,
-    bounds_non_empty, maxContaminationThreshold, useCellBenderFeatures,
-    training_empty_barcodes = allBounds$training_empty_barcodes,
-    training_nucleus_barcodes = allBounds$training_nucleus_barcodes
-  )
-  logTrainingDataSelection(cell_features_labeled)
-  r <- addGeneModules(cell_features_labeled, dgeMatrix,
-    numGenes = 100,
-    useCellBenderFeatures = useCellBenderFeatures, verbose = FALSE
-  )
-  cell_features_labeled <- r$cell_features
 
-  geneModulePlots <-
-    r$gene_module_plots[seq_len(min(4, length(r$gene_module_plots)))]
-  if (!"empty_gene_module_score" %in% colnames(cell_features_labeled)) {
-    log_warn("empty_gene_module_score was not computed. Dropping feature.")
-    features <- setdiff(features, "empty_gene_module_score")
+  cell_features_labeled <- labelTrainingData(
+    cell_features = cell_features,
+    bounds_empty = bounds_empty,
+    bounds_non_empty = bounds_non_empty,
+    maxContaminationThreshold = maxContaminationThreshold,
+    useCBRBInitialization = useCBRBInitialization,
+    training_empty_barcodes = allBounds$training_empty_barcodes,
+    training_nucleus_barcodes = allBounds$training_nucleus_barcodes,
+    training_debris_barcodes = allBounds$training_debris_barcodes,
+    bounds_debris = allBounds$bounds_debris
+  )
+
+  logTrainingDataSelection(cell_features_labeled)
+
+  empty_module_result <- computeSvmGeneModuleScore(
+    cell_features_labeled = cell_features_labeled,
+    dgeMatrix = dgeMatrix,
+    numGenes = 100,
+    useCellBenderFeatures = useCellBenderFeatures,
+    negative_class = "empty",
+    min_nucleus_exemplars = 100,
+    min_negative_exemplars = 100,
+    verbose = FALSE
+  )
+
+  cell_features_labeled$empty_gene_module_score <-
+    empty_module_result$score
+
+  debris_module_result <- computeSvmGeneModuleScore(
+    cell_features_labeled = cell_features_labeled,
+    dgeMatrix = dgeMatrix,
+    numGenes = 100,
+    useCellBenderFeatures = useCellBenderFeatures,
+    negative_class = "debris",
+    min_nucleus_exemplars = 100,
+    min_negative_exemplars = 100,
+    verbose = FALSE
+  )
+
+  cell_features_labeled$debris_gene_module_score <-
+    debris_module_result$score
+
+  geneModulePlots <- c(
+    empty_module_result$plots,
+    debris_module_result$plots
+  )
+
+  svm_empty_result <- runBinarySVM(
+    cell_features_labeled = cell_features_labeled,
+    features = features,
+    positive_class = "nucleus",
+    negative_class = "empty",
+    probability_col = "p_nucleus_vs_empty",
+    min_positive_exemplars = 100,
+    min_negative_exemplars = 100
+  )
+
+  if (is.null(svm_empty_result)) {
+    stop("Unable to train the nucleus-vs-empty SVM.")
   }
 
-  svm_result <- runSVM(
-    cell_features_labeled, features, bounds_empty,
-    cellProbabilityThreshold
+  features_nucleus_vs_debris <- c(
+    setdiff(features, "empty_gene_module_score"),
+    "debris_gene_module_score"
   )
-  cell_features_result <- svm_result$cell_features
-  trainingData <- svm_result$trainingData
+
+  svm_debris_result <- NULL
+  if (!is.null(debris_module_result$downGenes)) {
+    svm_debris_result <- runBinarySVM(
+      cell_features_labeled = cell_features_labeled,
+      features = features_nucleus_vs_debris,
+      positive_class = "nucleus",
+      negative_class = "debris",
+      probability_col = "p_nucleus_vs_debris",
+      min_positive_exemplars = 100,
+      min_negative_exemplars = 100
+    )
+  }
+
+  features_debris_vs_empty <- unique(c(
+    features,
+    "debris_gene_module_score"
+  ))
+
+  svm_debris_vs_empty_result <- NULL
+  if (!is.null(debris_module_result$downGenes)) {
+    svm_debris_vs_empty_result <- runBinarySVM(
+      cell_features_labeled = cell_features_labeled,
+      features = features_debris_vs_empty,
+      positive_class = "debris",
+      negative_class = "empty",
+      probability_col = "p_debris_vs_empty",
+      min_positive_exemplars = 100,
+      min_negative_exemplars = 100
+    )
+  }
+
+  cell_features_result <- cell_features_labeled
+  cell_features_result$p_nucleus_vs_empty <-
+    svm_empty_result$probabilities
+
+  gene_module_exemplar_plot <- NULL
+
+  if (is.null(svm_debris_result)) {
+    cell_features_result$p_nucleus_vs_debris <- NA_real_
+    cell_features_result$is_cell_prob <-
+      cell_features_result$p_nucleus_vs_empty
+    cell_features_result$p_debris_vs_nucleus <- NA_real_
+  } else {
+    gene_module_exemplar_plot <- plotGeneModuleScoresByExemplarClass(
+      cell_features_labeled,
+      strTitle = "Gene module scores by exemplar class"
+    )
+
+    cell_features_result$p_nucleus_vs_debris <-
+      svm_debris_result$probabilities
+
+    cell_features_result$is_cell_prob <- pmin(
+      cell_features_result$p_nucleus_vs_empty,
+      cell_features_result$p_nucleus_vs_debris
+    )
+
+    cell_features_result$p_debris_vs_nucleus <-
+      1 - cell_features_result$p_nucleus_vs_debris
+  }
+
+  if (is.null(svm_debris_vs_empty_result)) {
+    cell_features_result$p_debris_vs_empty <- NA_real_
+    cell_features_result$is_debris_prob <- NA_real_
+  } else {
+    cell_features_result$p_debris_vs_empty <-
+      svm_debris_vs_empty_result$probabilities
+
+    cell_features_result$is_debris_prob <- pmin(
+      cell_features_result$p_debris_vs_empty,
+      cell_features_result$p_debris_vs_nucleus
+    )
+  }
+
+  probabilityThreshold <- 0.5
+  if (!is.null(cellProbabilityThreshold)) {
+    probabilityThreshold <- cellProbabilityThreshold
+  }
+
+  cell_features_result$barcode_class <- assignBarcodeClass(
+    is_cell_prob = cell_features_result$is_cell_prob,
+    is_debris_prob = cell_features_result$is_debris_prob,
+    probabilityThreshold = probabilityThreshold
+  )
+
+  # This is a post-SVM rule, not part of any binary classifier. Barcodes
+  # below the upper UMI edge of the empty exemplar region are not assigned a
+  # final barcode class, even if an SVM assigns them nonzero probability.
+  idx_low_umi <- which(log10(cell_features_result$num_transcripts + 1) <
+    bounds_empty$umi_upper_bound)
+
+  cell_features_result$is_cell_prob[idx_low_umi] <- NA_real_
+  cell_features_result$is_debris_prob[idx_low_umi] <- NA_real_
+  cell_features_result$barcode_class[idx_low_umi] <- NA_character_
 
   selectionPlots <- createSelectionVisualization(
     cell_features_result,
     bounds_empty, bounds_non_empty, useCellBenderFeatures, dataset_name,
+    bounds_debris = allBounds$bounds_debris,
     training_empty_barcodes = allBounds$training_empty_barcodes,
-    training_nucleus_barcodes = allBounds$training_nucleus_barcodes
+    training_nucleus_barcodes = allBounds$training_nucleus_barcodes,
+    training_debris_barcodes = allBounds$training_debris_barcodes,
+    umi_threshold = allBounds$best_umi_threshold,
+    debris_intronic_floor = allBounds$debris_intronic_floor
   )
-  feature_plot <- plotScaledTrainingDataFeatures(
-    svm_result$trainingData[, c(features, "training_label_is_cell")]
+  feature_plot_nucleus_vs_empty <- plotScaledTrainingDataFeatures(
+    svm_empty_result$trainingData,
+    strTitle = "Training Features: nucleus vs empty"
   )
+  feature_plot_nucleus_vs_debris <- NULL
+  if (!is.null(svm_debris_result)) {
+    feature_plot_nucleus_vs_debris <- plotScaledTrainingDataFeatures(
+      svm_debris_result$trainingData,
+      strTitle = "Training Features: nucleus vs debris"
+    )
+  }
+
   log_info("Nuclei selection finished")
   return(list(
     dataset_name = dataset_name,
-    cell_features = svm_result$cell_features,
-    features = features, plots = selectionPlots,
-    featurePlot = feature_plot, geneModulePlots = geneModulePlots,
+    cell_features = cell_features_result,
+    features = features,
+    features_nucleus_vs_debris = features_nucleus_vs_debris,
+    features_debris_vs_empty = features_debris_vs_empty,
+    plots = selectionPlots,
+    featurePlotNucleusVsEmpty = feature_plot_nucleus_vs_empty,
+    featurePlotNucleusVsDebris = feature_plot_nucleus_vs_debris,
+    geneModulePlots = geneModulePlots,
+    geneModuleExemplarPlot = gene_module_exemplar_plot,
+    empty_down_genes = empty_module_result$downGenes,
+    debris_down_genes = debris_module_result$downGenes,
+    empty_gene_module_genes = empty_module_result$moduleGeneTable,
+    debris_gene_module_genes = debris_module_result$moduleGeneTable,
     bounds_empty = bounds_empty, bounds_non_empty = bounds_non_empty,
+    bounds_debris = allBounds$bounds_debris,
     training_empty_barcodes = allBounds$training_empty_barcodes,
     training_nucleus_barcodes = allBounds$training_nucleus_barcodes,
+    training_debris_barcodes = allBounds$training_debris_barcodes,
+    svm_model_nucleus_vs_empty = svm_empty_result$svm_model,
+    svm_model_nucleus_vs_debris = if (is.null(svm_debris_result)) {
+      NULL
+    } else {
+      svm_debris_result$svm_model
+    },
+    svm_model_debris_vs_empty = if (is.null(svm_debris_vs_empty_result)) {
+      NULL
+    } else {
+      svm_debris_vs_empty_result$svm_model
+    },
+    trainingData_nucleus_vs_empty = svm_empty_result$trainingData,
+    trainingData_nucleus_vs_debris = if (is.null(svm_debris_result)) {
+      NULL
+    } else {
+      svm_debris_result$trainingData
+    },
+    trainingData_debris_vs_empty = if (is.null(svm_debris_vs_empty_result)) {
+      NULL
+    } else {
+      svm_debris_vs_empty_result$trainingData
+    },
     use2DTrainingRefinement = use2DTrainingRefinement
   ))
+}
+
+assignBarcodeClass <- function(
+  is_cell_prob,
+  is_debris_prob,
+  probabilityThreshold = 0.5
+) {
+  barcode_class <- rep("empty_or_other", length(is_cell_prob))
+
+  idxNucleus <- !is.na(is_cell_prob) & is_cell_prob >= probabilityThreshold
+  idxDebris <- !is.na(is_debris_prob) &
+    is_debris_prob >= probabilityThreshold
+
+  barcode_class[idxNucleus] <- "nucleus"
+  barcode_class[idxDebris] <- "debris"
+
+  idxBoth <- which(idxNucleus & idxDebris)
+  if (length(idxBoth) > 0) {
+    barcode_class[idxBoth] <- ifelse(
+      is_cell_prob[idxBoth] >= is_debris_prob[idxBoth],
+      "nucleus",
+      "debris"
+    )
+  }
+
+  barcode_class
 }
 
 validateFeaturePresence <- function(cell_features, features) {
@@ -269,11 +476,12 @@ validateFeaturePresence <- function(cell_features, features) {
   }
 }
 
-
 createSelectionVisualization <- function(
   cell_features_labeled, bounds_empty,
   bounds_non_empty, useCellBenderFeatures, dataset_name,
-  training_empty_barcodes = NULL, training_nucleus_barcodes = NULL
+  bounds_debris = NULL, training_empty_barcodes = NULL,
+  training_nucleus_barcodes = NULL, training_debris_barcodes = NULL,
+  umi_threshold = NULL, debris_intronic_floor = NULL
 ) {
   p1 <- plotExpressionVsIntronic(cell_features_labeled,
     title = "All cell barcodes",
@@ -284,8 +492,12 @@ createSelectionVisualization <- function(
     plotCellTypeIntervals(
       cell_features_labeled, bounds_empty,
       bounds_non_empty,
+      bounds_debris = bounds_debris,
       training_empty_barcodes = training_empty_barcodes,
       training_nucleus_barcodes = training_nucleus_barcodes,
+      training_debris_barcodes = training_debris_barcodes,
+      umi_threshold = umi_threshold,
+      debris_intronic_floor = debris_intronic_floor,
       show_1d_bounds = is.null(training_empty_barcodes) ||
         is.null(training_nucleus_barcodes),
       show_2d_bounds = !is.null(training_empty_barcodes) &&
@@ -299,8 +511,8 @@ createSelectionVisualization <- function(
   )
 
   ambientPeak <- round(median(cell_features_labeled[
-    which(cell_features_labeled$is_cell == FALSE),
-  ]$num_transcripts))
+    which(cell_features_labeled$barcode_class != "nucleus"),
+  ]$num_transcripts, na.rm = TRUE))
 
   p5 <- ggdraw(function() {
     plotSelectedCellsSmoothScatter(cell_features_labeled,
@@ -402,8 +614,8 @@ filterZeroExpressionBarcodes <- function(cell_features, dgeMatrix) {
 #' Calculate the silhouette score for a clustering of cells.
 #'
 #' @param cell_features_labeled must include a column named
-#'   'training_label_is_cell' that contains the cell/empty labels (TRUE for
-#'   cell, FALSE for empty). NA entries are not included in the training data
+#'   'training_label_class' that contains the exemplar labels ('empty' and
+#'   'nucleus'). NA entries and other labels are not included in the training data
 #'   set.
 #' @param downsampleRate The fraction of the data to use for silhouette
 #'   calculation. Default is 0.1.
@@ -417,39 +629,47 @@ calculate_silhouette <- function(
   cell_features_labeled, downsampleRate = 0.1,
   showPlot = FALSE, verbose = FALSE
 ) {
-  # restrict to the training data
-  idx <- which(!is.na(cell_features_labeled$training_label_is_cell))
+  if (!"training_label_class" %in% colnames(cell_features_labeled)) {
+    if (verbose) {
+      log_info("training_label_class not found. Cannot calculate silhouette.")
+    }
+    return(list(mean_silhouette = NA_real_, data = data.frame()))
+  }
+
+  idx <- which(cell_features_labeled$training_label_class %in%
+    c("empty", "nucleus"))
   d <- cell_features_labeled[idx, ]
 
-  # downsample to 10% of the original data.
-  d <- d[sample(nrow(d), nrow(d) * downsampleRate), ]
+  if (nrow(d) < 2) {
+    if (verbose) {
+      log_info("Not enough training rows to calculate silhouette.")
+    }
+    return(list(mean_silhouette = NA_real_, data = d))
+  }
 
-  # Ensure there are two clusters (TRUE and FALSE values)
-  d$cluster_numeric <- as.numeric(factor(d$training_label_is_cell))
+  sample_size <- max(1, floor(nrow(d) * downsampleRate))
+  d <- d[sample(nrow(d), sample_size), ]
+
+  d$cluster_numeric <- as.numeric(factor(d$training_label_class))
   if (length(unique(d$cluster_numeric)) < 2) {
     if (verbose) {
       log_info("Not enough clusters to calculate silhouette.")
     }
-    result <- list(mean_silhouette = NA, data = d)
+    result <- list(mean_silhouette = NA_real_, data = d)
     return(result)
   }
 
-  # Extract the features used for clustering
   data_to_cluster <- d[, c("num_transcripts", "pct_intronic")]
 
-  # rescale the feaures to 0-1 scale
   data_to_cluster <- data.frame(
-    num_transcripts <-
+    num_transcripts =
       scales::rescale(log10(data_to_cluster$num_transcripts + 1)),
-    pct_intronic <- scales::rescale(data_to_cluster$pct_intronic)
+    pct_intronic = scales::rescale(data_to_cluster$pct_intronic)
   )
 
-  # Compute the silhouette score based on the
-  # training_label_is_cell column
   silhouette_scores <-
     cluster::silhouette(d$cluster_numeric, stats::dist(data_to_cluster))
 
-  # Optionally show the silhouette plot
   if (showPlot) {
     plot(silhouette_scores, main = "Silhouette plot")
   }
@@ -457,7 +677,6 @@ calculate_silhouette <- function(
   data_to_cluster$silhouette_score <- silhouette_scores[, 3]
   data_to_cluster$cluster_numeric <- d$cluster_numeric
 
-  # Calculate the mean silhouette score for the clustering
   mean_silhouette <- mean(data_to_cluster$silhouette_score)
 
   if (verbose) {
@@ -605,52 +824,116 @@ selectNucleiExemplarBounds <- function(
 
 ################################### USE BOUNDS TO LABEL TRAINING DATA
 
-#' Label the training data based on the given bounds
+#' Label SVM training exemplars
 #'
-#' @param cell_features A data frame containing the cell features.
-#' @param bounds_empty A data frame containing the bounds for the empty cells.
-#' @param bounds_non_empty A data frame containing the bounds for the non-empty
-#'   cells.
-#' @param maxContaminationThreshold The maximum contamination threshold for
-#'   non-empty cells (only when using cellbender features.)
-#' @param useCellBenderFeatures A boolean indicating whether to use CellBender
-#'   features.
-#' @param verbose A boolean indicating whether to print log messages.
-#' @return A data frame containing the training data with a new column
-#'   `training_label_is_cell`.
+#' Add a `training_label_class` column to `cell_features` by assigning selected
+#' barcodes to exemplar classes. The initialization strategy is controlled by
+#' `useCBRBInitialization`.
+#'
+#' When `useCBRBInitialization` is `TRUE`, labels are assigned by
+#' `labelTrainingDataCBRB()`. This uses the empty and nucleus bounds together
+#' with CellBender/CBRB contamination values. This path assigns only `"empty"`
+#' and `"nucleus"` exemplar labels.
+#'
+#' When `useCBRBInitialization` is `FALSE`, labels are assigned by
+#' `labelTrainingDataDefault()`. This uses either barcode lists selected
+#' upstream, or rectangular bounds if barcode lists are not available. This path
+#' can assign `"empty"`, `"nucleus"`, and `"debris"` exemplar labels.
+#'
+#' `useCBRBInitialization` is intentionally separate from whether CBRB features
+#' are used by the downstream SVM. For example, CBRB can be disabled for
+#' exemplar initialization while `frac_contamination` is still included as an
+#' SVM feature.
+#'
+#' @param cell_features A data frame containing barcode-level features.
+#' @param bounds_empty A one-row data frame containing rectangular bounds for
+#'   empty-droplet exemplars. Expected columns are `umi_lower_bound`,
+#'   `umi_upper_bound`, `intronic_lower_bound`, and `intronic_upper_bound`.
+#' @param bounds_non_empty A one-row data frame containing rectangular bounds
+#'   for nucleus exemplars. Expected columns are the same as `bounds_empty`.
+#' @param maxContaminationThreshold Numeric scalar. Maximum
+#'   `frac_contamination` allowed for nucleus exemplars when using CBRB
+#'   initialization.
+#' @param useCBRBInitialization Logical scalar. If `TRUE`, use the CBRB
+#'   initialization path. If `FALSE`, use the default density/barcode-list
+#'   initialization path.
+#' @param training_empty_barcodes Optional character vector of empty-droplet
+#'   exemplar barcodes selected upstream. Used only when
+#'   `useCBRBInitialization` is `FALSE`.
+#' @param training_nucleus_barcodes Optional character vector of nucleus
+#'   exemplar barcodes selected upstream. Used only when
+#'   `useCBRBInitialization` is `FALSE`.
+#' @param training_debris_barcodes Optional character vector of debris exemplar
+#'   barcodes selected upstream. Used only when `useCBRBInitialization` is
+#'   `FALSE`.
+#' @param bounds_debris Optional one-row data frame containing rectangular
+#'   bounds for debris exemplars. Used only when `useCBRBInitialization` is
+#'   `FALSE` and barcode lists are not supplied.
+#' @param verbose Logical scalar. If `TRUE`, emit log messages describing the
+#'   initialization path.
+#'
+#' @return A copy of `cell_features` with a `training_label_class` column.
+#'   Exemplar labels are `"empty"`, `"nucleus"`, and, for the default path,
+#'   optionally `"debris"`. Barcodes not used as training exemplars are `NA`.
+#'
 #' @noRd
 labelTrainingData <- function(
   cell_features, bounds_empty, bounds_non_empty,
-  maxContaminationThreshold = 0.1, useCellBenderFeatures = TRUE,
+  maxContaminationThreshold = 0.1, useCBRBInitialization = TRUE,
   training_empty_barcodes = NULL, training_nucleus_barcodes = NULL,
+  training_debris_barcodes = NULL, bounds_debris = NULL,
   verbose = TRUE
 ) {
-  if (useCellBenderFeatures) {
-    result <- (labelTrainingDataCBRB(cell_features, bounds_empty,
+  if (useCBRBInitialization) {
+    result <- labelTrainingDataCBRB(cell_features, bounds_empty,
       bounds_non_empty,
       maxContaminationThreshold = maxContaminationThreshold,
       verbose = verbose
-    ))
+    )
   } else {
     result <- labelTrainingDataDefault(cell_features, bounds_empty,
       bounds_non_empty,
       training_empty_barcodes = training_empty_barcodes,
       training_nucleus_barcodes = training_nucleus_barcodes,
+      training_debris_barcodes = training_debris_barcodes,
+      bounds_debris = bounds_debris,
       verbose = verbose
     )
   }
   return(result)
 }
 
-logTrainingDataSelection <- function(cell_features_labeled) {
-  numEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
-    !cell_features_labeled$training_label_is_cell)
-  numNonEmpty <- sum(!is.na(cell_features_labeled$training_label_is_cell) &
-    cell_features_labeled$training_label_is_cell)
-  log_info("Number of empty exemplars: [", numEmpty, "]")
-  log_info("Number of nuclei exemplars: [", numNonEmpty, "]")
-}
-
+#' Label training exemplars using CBRB initialization
+#'
+#' Assign empty-droplet and nucleus training labels using rectangular bounds and
+#' CellBender/CBRB contamination values. Empty exemplars are selected from
+#' `bounds_empty` with `frac_contamination == 1`, reflecting barcodes treated as
+#' fully ambient by CBRB. Nucleus exemplars are selected from
+#' `bounds_non_empty`, or `bounds_non_empty_extended` when supplied, with
+#' `frac_contamination <= maxContaminationThreshold`.
+#'
+#' This initialization path assigns only `"empty"` and `"nucleus"` labels. It
+#' does not assign debris exemplars. Debris exemplar selection is supported by
+#' the default density/barcode-list initialization path.
+#'
+#' @param cell_features A data frame containing barcode-level features. Must
+#'   include `num_transcripts`, `pct_intronic`, and `frac_contamination`.
+#' @param bounds_empty A one-row data frame containing rectangular bounds for
+#'   empty-droplet exemplars.
+#' @param bounds_non_empty A one-row data frame containing rectangular bounds
+#'   for nucleus exemplars.
+#' @param bounds_non_empty_extended Optional one-row data frame containing
+#'   extended nucleus exemplar bounds. If supplied, these bounds are used instead
+#'   of `bounds_non_empty`.
+#' @param maxContaminationThreshold Numeric scalar. Maximum
+#'   `frac_contamination` allowed for nucleus exemplars.
+#' @param verbose Logical scalar. If `TRUE`, emit a log message.
+#'
+#' @return A copy of `cell_features` with a `training_label_class` column.
+#'   CBRB-selected nucleus exemplars are labeled `"nucleus"`, CBRB-selected
+#'   empty exemplars are labeled `"empty"`, and all other barcodes are `NA`.
+#'
+#' @noRd
 labelTrainingDataCBRB <- function(
   cell_features, bounds_empty, bounds_non_empty,
   bounds_non_empty_extended = NULL, maxContaminationThreshold = 0.1,
@@ -688,9 +971,9 @@ labelTrainingDataCBRB <- function(
 
   # Assign classes based on the indices
   training_data <- cell_features
-  training_data$training_label_is_cell <- NA
-  training_data$training_label_is_cell[idxNonEmpty] <- TRUE
-  training_data$training_label_is_cell[idxEmpty] <- FALSE
+  training_data$training_label_class <- NA_character_
+  training_data$training_label_class[idxNonEmpty] <- "nucleus"
+  training_data$training_label_class[idxEmpty] <- "empty"
 
   if (verbose) {
     log_info("Training empty/nuclei cell barcodes selected [using CBRB]")
@@ -698,12 +981,52 @@ labelTrainingDataCBRB <- function(
   return(training_data)
 }
 
+#' Label training exemplars using default density initialization
+#'
+#' Assign empty, nucleus, and optionally debris training labels using the default
+#' initialization path. If upstream barcode lists are supplied for empty and
+#' nucleus exemplars, labels are assigned directly from those barcode lists by
+#' `labelTrainingDataDefaultByBarcode()`. This preserves barcode selections from
+#' any upstream refinement step.
+#'
+#' If barcode lists are not supplied, labels are assigned by rectangular bounds:
+#' `bounds_empty` selects empty exemplars, `bounds_non_empty` selects nucleus
+#' exemplars, and `bounds_debris`, when supplied and finite, selects debris
+#' exemplars.
+#'
+#' This path does not use `frac_contamination` to assign labels. It can be used
+#' even when CBRB features are later included in the SVM feature set.
+#'
+#' @param cell_features A data frame containing barcode-level features. Must
+#'   include `num_transcripts` and `pct_intronic`. Row names must contain cell
+#'   barcodes if barcode-list labeling is used.
+#' @param bounds_empty A one-row data frame containing rectangular bounds for
+#'   empty-droplet exemplars.
+#' @param bounds_non_empty A one-row data frame containing rectangular bounds
+#'   for nucleus exemplars.
+#' @param training_empty_barcodes Optional character vector of empty-droplet
+#'   exemplar barcodes selected upstream.
+#' @param training_nucleus_barcodes Optional character vector of nucleus
+#'   exemplar barcodes selected upstream.
+#' @param training_debris_barcodes Optional character vector of debris exemplar
+#'   barcodes selected upstream.
+#' @param bounds_debris Optional one-row data frame containing rectangular
+#'   bounds for debris exemplars.
+#' @param verbose Logical scalar. If `TRUE`, emit a log message.
+#'
+#' @return A copy of `cell_features` with a `training_label_class` column.
+#'   Selected exemplars are labeled `"empty"`, `"nucleus"`, or `"debris"`.
+#'   Barcodes not selected as exemplars are `NA`.
+#'
+#' @noRd
 labelTrainingDataDefault <- function(
   cell_features,
   bounds_empty,
   bounds_non_empty,
   training_empty_barcodes = NULL,
   training_nucleus_barcodes = NULL,
+  training_debris_barcodes = NULL,
+  bounds_debris = NULL,
   verbose = TRUE
 ) {
   if (!is.null(training_empty_barcodes) &&
@@ -712,6 +1035,7 @@ labelTrainingDataDefault <- function(
       cell_features = cell_features,
       training_empty_barcodes = training_empty_barcodes,
       training_nucleus_barcodes = training_nucleus_barcodes,
+      training_debris_barcodes = training_debris_barcodes,
       verbose = verbose
     ))
   }
@@ -730,13 +1054,18 @@ labelTrainingDataDefault <- function(
   idxEmpty <- find_indices(cell_features, bounds_empty)
   # non empty classes have a max contamination threshold
   idxNonEmpty <- find_indices(cell_features, bounds_non_empty)
-  all <- sort(union(idxEmpty, idxNonEmpty))
+  idxDebris <- integer(0)
+  if (!is.null(bounds_debris) && !any(is.na(bounds_debris))) {
+    idxDebris <- find_indices(cell_features, bounds_debris)
+  }
+  all <- sort(union(union(idxEmpty, idxNonEmpty), idxDebris))
 
   # Assign classes based on the indices
   training_data <- cell_features
-  training_data$training_label_is_cell <- NA
-  training_data$training_label_is_cell[idxNonEmpty] <- TRUE
-  training_data$training_label_is_cell[idxEmpty] <- FALSE
+  training_data$training_label_class <- NA_character_
+  training_data$training_label_class[idxNonEmpty] <- "nucleus"
+  training_data$training_label_class[idxEmpty] <- "empty"
+  training_data$training_label_class[idxDebris] <- "debris"
 
   if (verbose) {
     log_info(
@@ -751,6 +1080,7 @@ labelTrainingDataDefaultByBarcode <- function(
   cell_features,
   training_empty_barcodes,
   training_nucleus_barcodes,
+  training_debris_barcodes = NULL,
   verbose = TRUE
 ) {
   if (is.null(rownames(cell_features)) || any(rownames(cell_features) == "")) {
@@ -758,23 +1088,49 @@ labelTrainingDataDefaultByBarcode <- function(
   }
 
   training_data <- cell_features
-  training_data$training_label_is_cell <- NA
+  training_data$training_label_class <- NA_character_
 
   idxEmpty <- which(rownames(training_data) %in% training_empty_barcodes)
   idxNonEmpty <- which(rownames(training_data) %in% training_nucleus_barcodes)
+  idxDebris <- which(rownames(training_data) %in% training_debris_barcodes)
 
-  training_data$training_label_is_cell[idxNonEmpty] <- TRUE
-  training_data$training_label_is_cell[idxEmpty] <- FALSE
+  training_data$training_label_class[idxNonEmpty] <- "nucleus"
+  training_data$training_label_class[idxEmpty] <- "empty"
+  training_data$training_label_class[idxDebris] <- "debris"
 
   if (verbose) {
     log_info(
       "Training empty/nuclei cell barcodes selected",
-      "[using 2D density-refined method]"
+      "[using barcode-defined training labels]"
     )
   }
 
   training_data
 }
+
+logTrainingDataSelection <- function(cell_features_labeled) {
+  numEmpty <- 0
+  numNonEmpty <- 0
+  numDebris <- 0
+  if ("training_label_class" %in% colnames(cell_features_labeled)) {
+    numEmpty <- sum(
+      cell_features_labeled$training_label_class == "empty",
+      na.rm = TRUE
+    )
+    numNonEmpty <- sum(
+      cell_features_labeled$training_label_class == "nucleus",
+      na.rm = TRUE
+    )
+    numDebris <- sum(
+      cell_features_labeled$training_label_class == "debris",
+      na.rm = TRUE
+    )
+  }
+  log_info("Number of empty exemplars: [", numEmpty, "]")
+  log_info("Number of nuclei exemplars: [", numNonEmpty, "]")
+  log_info("Number of debris exemplars: [", numDebris, "]")
+}
+
 
 # Function to merge dataframes
 merge_bounds <- function(df1, df2) {
@@ -791,61 +1147,98 @@ merge_bounds <- function(df1, df2) {
 
 ###################################### RUN SVM
 
-runSVM <- function(
-  cell_features_labeled, features, bounds_empty,
-  cellProbabilityThreshold = NULL
+runBinarySVM <- function(
+  cell_features_labeled,
+  features,
+  positive_class,
+  negative_class,
+  probability_col,
+  min_positive_exemplars = 100,
+  min_negative_exemplars = 100
 ) {
-  # scale the requested cell features.
+  if (!"training_label_class" %in% colnames(cell_features_labeled)) {
+    logger::log_warn(
+      "training_label_class not found. Skipping SVM [",
+      probability_col, "]."
+    )
+    return(NULL)
+  }
+
+  num_positive <- sum(
+    cell_features_labeled$training_label_class == positive_class,
+    na.rm = TRUE
+  )
+  num_negative <- sum(
+    cell_features_labeled$training_label_class == negative_class,
+    na.rm = TRUE
+  )
+
+  if (num_positive < min_positive_exemplars ||
+    num_negative < min_negative_exemplars) {
+    logger::log_warn(
+      "Skipping SVM [", probability_col, "] because class counts are ",
+      positive_class, " [", num_positive, "] and ",
+      negative_class, " [", num_negative, "]"
+    )
+    return(NULL)
+  }
+
+  missing_features <- setdiff(features, colnames(cell_features_labeled))
+  if (length(missing_features) > 0) {
+    logger::log_warn(
+      "Skipping SVM [", probability_col, "] because feature(s) were missing: ",
+      paste(missing_features, collapse = ", ")
+    )
+    return(NULL)
+  }
+
+  unusable_features <- features[vapply(features, function(feature) {
+    values <- cell_features_labeled[[feature]]
+    is.numeric(values) && !any(is.finite(values))
+  }, logical(1))]
+  if (length(unusable_features) > 0) {
+    logger::log_warn(
+      "Skipping SVM [", probability_col, "] because feature(s) had no finite values: ",
+      paste(unusable_features, collapse = ", ")
+    )
+    return(NULL)
+  }
+
   cell_features_scaled <- scaleFeatures(cell_features_labeled, features)
 
-  # get the training data - restrict data to the labeled training
-  # data for the specific features we are using.
+  training_idx <- which(
+    cell_features_scaled$training_label_class %in%
+      c(positive_class, negative_class)
+  )
+
   trainingData <- cell_features_scaled[
-    !is.na(cell_features_scaled$training_label_is_cell),
-    c(features, "training_label_is_cell")
+    training_idx,
+    c(features, "training_label_class")
   ]
 
-  trainingData$training_label_is_cell <-
-    as.factor(trainingData$training_label_is_cell)
+  trainingData$training_label_class <- factor(
+    trainingData$training_label_class,
+    levels = c(negative_class, positive_class)
+  )
 
-  # train the SVM
-  svm_model <- e1071::svm(training_label_is_cell ~ .,
+  svm_model <- e1071::svm(training_label_class ~ .,
     data = trainingData,
     type = "C-classification", kernel = "radial", probability = TRUE
   )
-  # predict all points
-  predictions <- stats::predict(svm_model, cell_features_scaled[, features],
+
+  predictions <- stats::predict(
+    svm_model,
+    cell_features_scaled[, features, drop = FALSE],
     probability = TRUE
   )
-  # Extract the probabilities
+
   probabilities <- attr(predictions, "probabilities")
-  # Combine predictions and confidence into a dataframe
-  results_df <- data.frame(
-    is_cell = predictions,
-    is_cell_prob = probabilities[, "TRUE"]
+
+  list(
+    probabilities = probabilities[, positive_class],
+    trainingData = trainingData,
+    svm_model = svm_model
   )
-  # optionally override cell probability
-  if (!is.null(cellProbabilityThreshold)) {
-    results_df$is_cell <-
-      ifelse(results_df$is_cell_prob >= cellProbabilityThreshold,
-        TRUE, FALSE
-      )
-  }
-
-  # Exclude barcodes lower than the lower bound of UMIs from classification.
-  idx <- which(log10(cell_features_labeled$num_transcripts) <
-    bounds_empty$umi_upper_bound)
-
-  results_df$is_cell_prob[idx] <- NA
-  results_df$is_cell[idx] <- FALSE
-
-  # merge the results_df with the original cell_features
-  cell_features_result <- cbind(cell_features_labeled, results_df)
-  result <- list(
-    cell_features = cell_features_result,
-    trainingData = trainingData, svm_model = svm_model
-  )
-  return(result)
 }
 
 scaleFeatures <- function(cell_features_labeled, features) {
@@ -885,60 +1278,92 @@ scaleFeatures <- function(cell_features_labeled, features) {
 #' @import cowplot ggplot2
 #' @noRd
 arrangeSVMCellSelectionPlots <- function(
-  plots, geneModulePlots = NULL,
-  featurePlot = NULL, dataset_name, outPDF, useOpenPDF = FALSE
+  plots,
+  geneModulePlots = NULL,
+  featurePlotNucleusVsEmpty = NULL,
+  featurePlotNucleusVsDebris = NULL,
+  geneModuleExemplarPlot = NULL,
+  dataset_name,
+  outPDF,
+  useOpenPDF = FALSE
 ) {
-  # plots 1,3,4 are ggplot2.
-
+  # plots 1, 3, and 4 are ggplot2 objects.
   plots[[1]] <- plots[[1]] + custom_theme()
   plots[[3]] <- plots[[3]] + custom_theme()
   plots[[4]] <- plots[[4]] + custom_theme()
 
-  # Arrange the plots into a grid
-  plot_grid <- plot_grid(plotlist = plots, ncol = 2, nrow = 3)
-
-  # Add the title
-  title <- ggdraw() + draw_label(dataset_name,
-    fontface = "bold", size = 12,
-    hjust = 0.5
+  plot_grid <- cowplot::plot_grid(
+    plotlist = plots,
+    ncol = 2,
+    nrow = 3
   )
 
-  # Combine the title and the plot grid
-  final_plot <- plot_grid(title, plot_grid, ncol = 1, rel_heights = c(
-    0.05,
-    1
-  ))
+  title <- cowplot::ggdraw() +
+    cowplot::draw_label(
+      dataset_name,
+      fontface = "bold",
+      size = 12,
+      hjust = 0.5
+    )
 
-  # Set PDF dimensions pdf_width <- 12 pdf_height <- 12
+  final_plot <- cowplot::plot_grid(
+    title,
+    plot_grid,
+    ncol = 1,
+    rel_heights = c(0.05, 1)
+  )
 
-  # Open the PDF device
-  if (!useOpenPDF & !is.null(outPDF)) {
-    # pdf(outPDF, width = pdf_width, height = pdf_height)
+  if (!useOpenPDF && !is.null(outPDF)) {
     grDevices::pdf(outPDF)
   }
 
+  # Page 1: main CBRB selection summary.
   gridExtra::grid.arrange(final_plot)
 
+  # Page 2: selected-cell probability plot with larger text.
   plots[[4]] <- plots[[4]] +
     custom_theme(
-      title_size = 12, axis_title_size = 10,
-      axis_text_size = 10, legend_title_size = 10, legend_text_size = 10
+      title_size = 12,
+      axis_title_size = 10,
+      axis_text_size = 10,
+      legend_title_size = 10,
+      legend_text_size = 10
     )
 
   gridExtra::grid.arrange(plots[[4]])
 
-  if (!is.null(featurePlot)) {
-    gridExtra::grid.arrange(featurePlot)
+  # Page 3: nucleus vs empty feature plot.
+  if (!is.null(featurePlotNucleusVsEmpty)) {
+    gridExtra::grid.arrange(featurePlotNucleusVsEmpty)
   }
 
+  # Page 4: nucleus vs debris feature plot, if the debris SVM ran.
+  if (!is.null(featurePlotNucleusVsDebris)) {
+    gridExtra::grid.arrange(featurePlotNucleusVsDebris)
+  }
+
+  # Page 5: debris gene module diagnostics, if the debris SVM ran.
+  if (!is.null(geneModuleExemplarPlot) &&
+    !is.null(geneModulePlots[["debris_gene_module_score"]])) {
+    gridExtra::grid.arrange(
+      geneModulePlots[["debris_gene_module_score"]] +
+        custom_theme(),
+      geneModuleExemplarPlot,
+      ncol = 1
+    )
+  }
+
+  # Existing gene-module summary page.
   if (!is.null(geneModulePlots)) {
-    gridExtra::grid.arrange(arrangeSVMGeneModulePlots(
-      geneModulePlots,
-      dataset_name
-    ))
+    gridExtra::grid.arrange(
+      arrangeSVMGeneModulePlots(
+        geneModulePlots,
+        dataset_name
+      )
+    )
   }
 
-  if (!useOpenPDF & !is.null(outPDF)) {
+  if (!useOpenPDF && !is.null(outPDF)) {
     grDevices::dev.off()
   }
 }
@@ -958,8 +1383,14 @@ arrangeSVMCellSelectionPlots <- function(
 #' @import cowplot ggplot2
 #' @noRd
 arrangeSVMCellSelectionPlotsNoCBRB <- function(
-  plots, geneModulePlots = NULL,
-  featurePlot = NULL, dataset_name, outPDF, useOpenPDF = FALSE
+  plots,
+  geneModulePlots = NULL,
+  featurePlotNucleusVsEmpty = NULL,
+  featurePlotNucleusVsDebris = NULL,
+  geneModuleExemplarPlot = NULL,
+  dataset_name,
+  outPDF,
+  useOpenPDF = FALSE
 ) {
   # re-order plots to include some plots that would otherwise be
   # empty due to CBRB features not being used.
@@ -971,39 +1402,62 @@ arrangeSVMCellSelectionPlotsNoCBRB <- function(
   # 6. SmoothScatter final selection
 
   pList <- list(
-    plots[[2]], geneModulePlots[["training_data"]] + custom_theme(),
-    geneModulePlots[["empty_gene_module_score"]] + custom_theme(),
-    plots[[3]] + custom_theme(), plots[[4]] + custom_theme(), plots[[5]]
+    plots[[2]],
+    geneModulePlots[["empty_gene_module_score_training_data"]] +
+      custom_theme(),
+    geneModulePlots[["empty_gene_module_score"]] +
+      custom_theme(),
+    plots[[3]] + custom_theme(),
+    plots[[4]] + custom_theme(),
+    plots[[5]]
   )
 
-  # Arrange the plots into a grid
-  plot_grid <- plot_grid(plotlist = pList, ncol = 2, nrow = 3)
-
-  # Add the title
-  title <- ggdraw() + draw_label(dataset_name,
-    fontface = "bold", size = 12,
-    hjust = 0.5
+  plot_grid <- cowplot::plot_grid(
+    plotlist = pList,
+    ncol = 2,
+    nrow = 3
   )
 
-  # Combine the title and the plot grid
-  final_plot <- plot_grid(title, plot_grid, ncol = 1, rel_heights = c(
-    0.05,
-    1
-  ))
+  title <- cowplot::ggdraw() +
+    cowplot::draw_label(
+      dataset_name,
+      fontface = "bold",
+      size = 12,
+      hjust = 0.5
+    )
 
-  # Open the PDF device
-  if (!useOpenPDF & !is.null(outPDF)) {
-    # pdf(outPDF, width = pdf_width, height = pdf_height)
+  final_plot <- cowplot::plot_grid(
+    title,
+    plot_grid,
+    ncol = 1,
+    rel_heights = c(0.05, 1)
+  )
+
+  if (!useOpenPDF && !is.null(outPDF)) {
     grDevices::pdf(outPDF)
   }
 
   gridExtra::grid.arrange(final_plot)
 
-  if (!is.null(featurePlot)) {
-    gridExtra::grid.arrange(featurePlot)
+  if (!is.null(featurePlotNucleusVsEmpty)) {
+    gridExtra::grid.arrange(featurePlotNucleusVsEmpty)
   }
 
-  if (!useOpenPDF & !is.null(outPDF)) {
+  if (!is.null(featurePlotNucleusVsDebris)) {
+    gridExtra::grid.arrange(featurePlotNucleusVsDebris)
+  }
+
+  if (!is.null(geneModuleExemplarPlot) &&
+    !is.null(geneModulePlots[["debris_gene_module_score"]])) {
+    gridExtra::grid.arrange(
+      geneModulePlots[["debris_gene_module_score"]] +
+        custom_theme(),
+      geneModuleExemplarPlot,
+      ncol = 1
+    )
+  }
+
+  if (!useOpenPDF && !is.null(outPDF)) {
     grDevices::dev.off()
   }
 }
@@ -1024,9 +1478,14 @@ arrangeSVMGeneModulePlots <- function(plots, dataset_name) {
 
   # final plots to include:
   plotList <- c(
-    "training_data", "empty_gene_module_score",
-    "empty_gene_module_score_vs_contam", "cell_probability_histogram"
+    "empty_gene_module_score_training_data",
+    "empty_gene_module_score",
+    "debris_gene_module_score_training_data",
+    "debris_gene_module_score",
+    "empty_gene_module_score_vs_contam",
+    "cell_probability_histogram"
   )
+  plotList <- plotList[plotList %in% names(plots_custom_theme)]
   plots_custom_theme <- plots_custom_theme[plotList]
 
   # Arrange the plots into a grid
@@ -1076,8 +1535,10 @@ getCellSelectionPlotTitle <- function(
   cell_features_result, strTitlePrefix = "",
   transcriptFeature = "num_transcripts"
 ) {
-  selected <- cell_features_result[which(cell_features_result$is_cell ==
-    TRUE & cell_features_result[[transcriptFeature]] > 0), ]
+  selected <- cell_features_result[which(
+    cell_features_result$barcode_class == "nucleus" &
+      cell_features_result[[transcriptFeature]] > 0
+  ), ]
 
   numSTAMPs <- dim(selected)[1]
   readsPerUMI <- NA
@@ -1199,7 +1660,7 @@ plotExpressionVsIntronic <- function(
 #'
 #' @param cell_features A data frame containing barcode-level features. The
 #'   data frame must contain `num_transcripts`, `pct_intronic`, and
-#'   `training_label_is_cell`. If two-dimensional bounds are plotted, row names
+#'   `training_label_class`. If two-dimensional bounds are plotted, row names
 #'   must contain the cell barcode identifiers used in
 #'   `training_empty_barcodes` and `training_nucleus_barcodes`.
 #' @param bounds_empty A one-row data frame containing the rectangular
@@ -1230,8 +1691,12 @@ plotExpressionVsIntronic <- function(
 #' @noRd
 plotCellTypeIntervals <- function(
   cell_features, bounds_empty, bounds_non_empty,
+  bounds_debris = NULL,
   training_empty_barcodes = NULL,
   training_nucleus_barcodes = NULL,
+  training_debris_barcodes = NULL,
+  umi_threshold = NULL,
+  debris_intronic_floor = NULL,
   show_1d_bounds = TRUE,
   show_2d_bounds = TRUE,
   strTitleOverride = NULL, cex.axis = 0.6, cex.lab = 0.7, cex.main = 0.65
@@ -1284,14 +1749,23 @@ plotCellTypeIntervals <- function(
     invisible(NULL)
   }
 
-  num_training_empty <- sum(
-    !is.na(cell_features$training_label_is_cell) &
-      !cell_features$training_label_is_cell
-  )
-  num_training_nuclei <- sum(
-    !is.na(cell_features$training_label_is_cell) &
-      cell_features$training_label_is_cell
-  )
+  num_training_empty <- 0
+  num_training_nuclei <- 0
+  num_training_debris <- 0
+  if ("training_label_class" %in% colnames(cell_features)) {
+    num_training_empty <- sum(
+      cell_features$training_label_class == "empty",
+      na.rm = TRUE
+    )
+    num_training_nuclei <- sum(
+      cell_features$training_label_class == "nucleus",
+      na.rm = TRUE
+    )
+    num_training_debris <- sum(
+      cell_features$training_label_class == "debris",
+      na.rm = TRUE
+    )
+  }
 
   graphics::smoothScatter(
     log10(cell_features$num_transcripts),
@@ -1311,6 +1785,8 @@ plotCellTypeIntervals <- function(
     num_training_empty,
     "] nuclei [",
     num_training_nuclei,
+    "] debris [",
+    num_training_debris,
     "]"
   )
 
@@ -1345,6 +1821,18 @@ plotCellTypeIntervals <- function(
       lwd = 2,
       lty = 1
     )
+
+    if (!is.null(bounds_debris) && !any(is.na(bounds_debris))) {
+      graphics::rect(
+        bounds_debris$umi_lower_bound,
+        bounds_debris$intronic_lower_bound,
+        bounds_debris$umi_upper_bound,
+        bounds_debris$intronic_upper_bound,
+        border = "orange",
+        lwd = 2,
+        lty = 1
+      )
+    }
   }
 
   if (show_2d_bounds) {
@@ -1365,6 +1853,28 @@ plotCellTypeIntervals <- function(
     )
   }
 
+  if (!show_1d_bounds && !is.null(bounds_debris) &&
+    !any(is.na(bounds_debris))) {
+    graphics::rect(
+      bounds_debris$umi_lower_bound,
+      bounds_debris$intronic_lower_bound,
+      bounds_debris$umi_upper_bound,
+      bounds_debris$intronic_upper_bound,
+      border = "orange",
+      lwd = 2,
+      lty = 1
+    )
+  }
+
+
+  if (!is.null(umi_threshold) && !is.na(umi_threshold)) {
+    graphics::abline(v = umi_threshold, lty = 2, col = "red")
+  }
+
+  if (!is.null(debris_intronic_floor) && !is.na(debris_intronic_floor)) {
+    graphics::abline(h = debris_intronic_floor, lty = 2, col = "blue")
+  }
+
   par(mar = c(5.1, 4.1, 4.1, 2.1), mgp = c(3, 1, 0), tck = NA)
 }
 
@@ -1372,27 +1882,54 @@ plotCellTypeIntervals <- function(
 plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
   strTitle <- "Selected Nuclei"
 
-  df <- cell_features_result[cell_features_result$is_cell == TRUE, ]
+  df <- cell_features_result[
+    which(cell_features_result[["barcode_class"]] == "nucleus"),
+  ]
   umi_min_threshold <- min(log10(df[["num_transcripts"]]))
   intronic_min_threshold <- min(df[["pct_intronic"]])
 
-  # TO MAKE R CMD CHECK HAPPY
-  num_transcripts <- pct_intronic <- is_cell <- NULL
+  plot_df <- cell_features_result
+  plot_df$plot_class <- "other"
+  plot_df$plot_class[
+    plot_df[["barcode_class"]] == "nucleus"
+  ] <- "nucleus"
+  plot_df$plot_class[
+    plot_df[["barcode_class"]] == "debris"
+  ] <- "debris"
 
-  p <- ggplot(cell_features_result, aes(
+  plot_df$plot_class <- factor(
+    plot_df$plot_class,
+    levels = c("other", "debris", "nucleus")
+  )
+
+  # TO MAKE R CMD CHECK HAPPY
+  num_transcripts <- pct_intronic <- plot_class <- NULL
+
+  p <- ggplot(plot_df, aes(
     x = log10(num_transcripts),
-    y = pct_intronic, color = is_cell
+    y = pct_intronic,
+    color = plot_class
   )) +
     ggrastr::rasterize(geom_point(size = size, alpha = alpha), dpi = 900) +
     labs(
       x = "log10(UMI)",
       y = "% Intronic",
-      color = "Selected Cell"
+      color = "Barcode class"
     ) +
     ggtitle(strTitle) +
     scale_color_manual(
-      values =
-        c("TRUE" = "green", "FALSE" = "lightblue")
+      values = c(
+        "nucleus" = "green",
+        "debris" = "orange",
+        "other" = "grey80"
+      ),
+      breaks = c("debris", "nucleus", "other"),
+      labels = c(
+        "debris" = "debris",
+        "nucleus" = "nucleus",
+        "other" = "other"
+      ),
+      drop = TRUE
     ) +
     coord_cartesian(xlim = log10_UMI_AXIS_RANGE_NEW) +
     theme_minimal() +
@@ -1434,13 +1971,12 @@ plotSelectedCellsSmoothScatter <- function(
   }
 
   xlab <- "log10 ( UMIs )"
-  strPrefix <- ""
 
   if (transcriptFeature == "num_retained_transcripts") {
     xlab <- "log10 ( UMIs post CBRB )"
   }
 
-  cell_features_filtered <- cell_features[!is.na(cell_features$is_cell), ]
+  cell_features_filtered <- cell_features[!is.na(cell_features$barcode_class), ]
   # for cases where plotting remove background processed data.
   # number of transcripts should never be 0.
   cell_features_filtered <-
@@ -1449,7 +1985,7 @@ plotSelectedCellsSmoothScatter <- function(
   strTitle <- getCellSelectionPlotTitle(cell_features_filtered,
     strTitlePrefix = strTitlePrefix, transcriptFeature = transcriptFeature
   )
-  df <- cell_features_filtered[cell_features_filtered$is_cell == TRUE &
+  df <- cell_features_filtered[cell_features_filtered$barcode_class == "nucleus" &
     cell_features_filtered[[transcriptFeature]] > 0, ]
   umi_min_threshold <- min(df[[transcriptFeature]])
   intronic_min_threshold <- min(df[["pct_intronic"]])
@@ -1480,35 +2016,46 @@ plotSelectedCellsSmoothScatter <- function(
   }
 }
 
-plotScaledTrainingDataFeatures <- function(trainingData) {
-  # This is to avoid using dplyr and adding more dependencies.
-  # Find the index of the label column
-  label_col_index <- which(names(trainingData) == "training_label_is_cell")
+plotScaledTrainingDataFeatures <- function(
+  trainingData,
+  strTitle = "Training Data Features"
+) {
+  if (is.null(trainingData) || nrow(trainingData) == 0) {
+    return(NULL)
+  }
 
-  # Exclude the label column when generating feature names and
-  # values
-  feature_columns <- trainingData[, -label_col_index]
+  label_col_index <- which(names(trainingData) == "training_label_class")
+  if (length(label_col_index) != 1) {
+    return(NULL)
+  }
+
+  feature_columns <- trainingData[, -label_col_index, drop = FALSE]
   label_column <- trainingData[, label_col_index]
 
-  # Create the long-format data frame
   longData <- data.frame(
-    feature = rep(names(feature_columns),
-      each = nrow(trainingData)
-    ), value = unlist(feature_columns),
-    is_nuclei = rep(label_column, times = ncol(feature_columns))
+    feature = rep(names(feature_columns), each = nrow(trainingData)),
+    value = unlist(feature_columns),
+    training_label_class = rep(label_column, times = ncol(feature_columns))
   )
 
-  # Plot TO MAKE R CMD CHECK HAPPY
-  feature <- value <- is_nuclei <- NULL
+  feature <- value <- training_label_class <- NULL
 
-  p <- ggplot(longData, aes(x = feature, y = value, fill = is_nuclei)) +
+  p <- ggplot(longData, aes(
+    x = feature,
+    y = value,
+    fill = training_label_class
+  )) +
     geom_violin(trim = FALSE, alpha = 0.7) +
-    scale_fill_manual(values = c("TRUE" = "green", "FALSE" = "red")) +
+    scale_fill_manual(values = c(
+      "nucleus" = "green",
+      "empty" = "red",
+      "debris" = "orange"
+    )) +
     labs(
-      title = "Violin Plot of Training Data Features",
+      title = strTitle,
       x = "Features",
       y = "Values",
-      fill = "Is Nuclei"
+      fill = "Training class"
     ) +
     theme_minimal() +
     theme(
@@ -1518,6 +2065,20 @@ plotScaledTrainingDataFeatures <- function(trainingData) {
     coord_flip()
 
   return(p)
+}
+
+combineTrainingFeaturePlots <- function(...) {
+  plot_list <- list(...)
+  plot_list <- plot_list[!vapply(plot_list, is.null, logical(1))]
+
+  if (length(plot_list) == 0) {
+    return(NULL)
+  }
+  if (length(plot_list) == 1) {
+    return(plot_list[[1]])
+  }
+
+  cowplot::plot_grid(plotlist = plot_list, ncol = 1)
 }
 
 
@@ -1639,7 +2200,7 @@ plotCellProbabilityConditionalCbrb <- function(
   df <- df[!is.na(df$is_cell_prob), ]
 
   # Calculate the number of cell barcodes
-  numCellBarcodes <- dim(df[df$is_cell == TRUE, ])[1]
+  numCellBarcodes <- dim(df[df$barcode_class == "nucleus", ])[1]
 
   r <- graphics::hist(df$is_cell_prob,
     breaks = seq(0, 1, by = 0.01),
@@ -1667,4 +2228,95 @@ plotCellProbabilityConditionalCbrb <- function(
     theme_minimal() +
     annotation_logticks(sides = "l")
   return(p)
+}
+
+
+#' Plot gene module scores for training exemplar classes
+#'
+#' This diagnostic plot compares the empty-droplet gene module score against the
+#' debris gene module score for barcodes used as training exemplars. Points are
+#' colored by `training_label_class`, so the plot shows whether the empty,
+#' nucleus, and debris exemplar classes separate in the two-dimensional
+#' gene-module score space.
+#'
+#' @param cell_features_labeled A cell-feature data frame containing
+#'   `empty_gene_module_score`, `debris_gene_module_score`, and
+#'   `training_label_class`.
+#' @param strTitle Character scalar used as the plot title.
+#' @param point_alpha Numeric alpha value used for points. Smaller values reduce
+#'   overplotting.
+#' @param point_size Numeric point size passed to [ggplot2::geom_point()].
+#'
+#' @return A ggplot object.
+#'
+#' @export
+plotGeneModuleScoresByExemplarClass <- function(
+  cell_features_labeled,
+  strTitle = "Gene module scores by exemplar class",
+  point_alpha = 0.25,
+  point_size = 0.6
+) {
+  requiredCols <- c(
+    "empty_gene_module_score",
+    "debris_gene_module_score",
+    "training_label_class"
+  )
+
+  missingCols <- setdiff(requiredCols, colnames(cell_features_labeled))
+  if (length(missingCols) > 0) {
+    stop(
+      "Missing required column(s): ",
+      paste(missingCols, collapse = ", ")
+    )
+  }
+
+  idxKeep <- is.finite(cell_features_labeled$empty_gene_module_score) &
+    is.finite(cell_features_labeled$debris_gene_module_score) &
+    !is.na(cell_features_labeled$training_label_class)
+
+  plotDf <- cell_features_labeled[idxKeep, , drop = FALSE]
+  plotDf$training_label_class <- factor(
+    plotDf$training_label_class,
+    levels = c("empty", "nucleus", "debris")
+  )
+
+  # Make R CMD CHECK Happy
+  empty_gene_module_score <- debris_gene_module_score <-
+    training_label_class <- NULL
+
+  ggplot2::ggplot(
+    plotDf,
+    ggplot2::aes(
+      x = empty_gene_module_score,
+      y = debris_gene_module_score,
+      color = training_label_class
+    )
+  ) +
+    ggplot2::geom_point(
+      alpha = point_alpha,
+      size = point_size
+    ) +
+    ggplot2::scale_color_manual(
+      values = c(
+        empty = "red",
+        nucleus = "green",
+        debris = "orange"
+      ),
+      drop = FALSE
+    ) +
+    ggplot2::guides(
+      color = ggplot2::guide_legend(
+        override.aes = list(
+          size = point_size * 4,
+          alpha = 1
+        )
+      )
+    ) +
+    ggplot2::labs(
+      title = strTitle,
+      x = "Empty gene module score",
+      y = "Debris gene module score",
+      color = "Exemplar class"
+    ) +
+    ggplot2::theme_classic()
 }
