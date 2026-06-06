@@ -203,23 +203,25 @@ callByIntronicSVM <- function(
     useCBRBInitialization <- FALSE
   }
   allBounds <- findTrainingDataBounds(cell_features, max_umis_empty,
-    useCellBenderFeatures = useCBRBInitialization,
+    useCBRBInitialization = useCBRBInitialization,
     forceTwoClusterSolution = forceTwoClusterSolution,
     use2DTrainingRefinement = use2DTrainingRefinement
   )
   bounds_empty <- allBounds$bounds_empty
   bounds_non_empty <- allBounds$bounds_non_empty
+
   cell_features_labeled <- labelTrainingData(
     cell_features = cell_features,
     bounds_empty = bounds_empty,
     bounds_non_empty = bounds_non_empty,
     maxContaminationThreshold = maxContaminationThreshold,
-    useCellBenderFeatures = useCellBenderFeatures,
+    useCBRBInitialization = useCBRBInitialization,
     training_empty_barcodes = allBounds$training_empty_barcodes,
     training_nucleus_barcodes = allBounds$training_nucleus_barcodes,
     training_debris_barcodes = allBounds$training_debris_barcodes,
     bounds_debris = allBounds$bounds_debris
   )
+
   logTrainingDataSelection(cell_features_labeled)
 
   empty_module_result <- computeSvmGeneModuleScore(
@@ -822,69 +824,116 @@ selectNucleiExemplarBounds <- function(
 
 ################################### USE BOUNDS TO LABEL TRAINING DATA
 
-#' Label the training data based on the given bounds
+#' Label SVM training exemplars
 #'
-#' @param cell_features A data frame containing the cell features.
-#' @param bounds_empty A data frame containing the bounds for the empty cells.
-#' @param bounds_non_empty A data frame containing the bounds for the non-empty
-#'   cells.
-#' @param maxContaminationThreshold The maximum contamination threshold for
-#'   non-empty cells (only when using cellbender features.)
-#' @param useCellBenderFeatures A boolean indicating whether to use CellBender
-#'   features.
-#' @param verbose A boolean indicating whether to print log messages.
-#' @return A data frame containing the training data with a new column
-#'   `training_label_class`.
+#' Add a `training_label_class` column to `cell_features` by assigning selected
+#' barcodes to exemplar classes. The initialization strategy is controlled by
+#' `useCBRBInitialization`.
+#'
+#' When `useCBRBInitialization` is `TRUE`, labels are assigned by
+#' `labelTrainingDataCBRB()`. This uses the empty and nucleus bounds together
+#' with CellBender/CBRB contamination values. This path assigns only `"empty"`
+#' and `"nucleus"` exemplar labels.
+#'
+#' When `useCBRBInitialization` is `FALSE`, labels are assigned by
+#' `labelTrainingDataDefault()`. This uses either barcode lists selected
+#' upstream, or rectangular bounds if barcode lists are not available. This path
+#' can assign `"empty"`, `"nucleus"`, and `"debris"` exemplar labels.
+#'
+#' `useCBRBInitialization` is intentionally separate from whether CBRB features
+#' are used by the downstream SVM. For example, CBRB can be disabled for
+#' exemplar initialization while `frac_contamination` is still included as an
+#' SVM feature.
+#'
+#' @param cell_features A data frame containing barcode-level features.
+#' @param bounds_empty A one-row data frame containing rectangular bounds for
+#'   empty-droplet exemplars. Expected columns are `umi_lower_bound`,
+#'   `umi_upper_bound`, `intronic_lower_bound`, and `intronic_upper_bound`.
+#' @param bounds_non_empty A one-row data frame containing rectangular bounds
+#'   for nucleus exemplars. Expected columns are the same as `bounds_empty`.
+#' @param maxContaminationThreshold Numeric scalar. Maximum
+#'   `frac_contamination` allowed for nucleus exemplars when using CBRB
+#'   initialization.
+#' @param useCBRBInitialization Logical scalar. If `TRUE`, use the CBRB
+#'   initialization path. If `FALSE`, use the default density/barcode-list
+#'   initialization path.
+#' @param training_empty_barcodes Optional character vector of empty-droplet
+#'   exemplar barcodes selected upstream. Used only when
+#'   `useCBRBInitialization` is `FALSE`.
+#' @param training_nucleus_barcodes Optional character vector of nucleus
+#'   exemplar barcodes selected upstream. Used only when
+#'   `useCBRBInitialization` is `FALSE`.
+#' @param training_debris_barcodes Optional character vector of debris exemplar
+#'   barcodes selected upstream. Used only when `useCBRBInitialization` is
+#'   `FALSE`.
+#' @param bounds_debris Optional one-row data frame containing rectangular
+#'   bounds for debris exemplars. Used only when `useCBRBInitialization` is
+#'   `FALSE` and barcode lists are not supplied.
+#' @param verbose Logical scalar. If `TRUE`, emit log messages describing the
+#'   initialization path.
+#'
+#' @return A copy of `cell_features` with a `training_label_class` column.
+#'   Exemplar labels are `"empty"`, `"nucleus"`, and, for the default path,
+#'   optionally `"debris"`. Barcodes not used as training exemplars are `NA`.
+#'
 #' @noRd
 labelTrainingData <- function(
-  cell_features, bounds_empty, bounds_non_empty,
-  maxContaminationThreshold = 0.1, useCellBenderFeatures = TRUE,
-  training_empty_barcodes = NULL, training_nucleus_barcodes = NULL,
-  training_debris_barcodes = NULL, bounds_debris = NULL,
-  verbose = TRUE
+    cell_features, bounds_empty, bounds_non_empty,
+    maxContaminationThreshold = 0.1, useCBRBInitialization = TRUE,
+    training_empty_barcodes = NULL, training_nucleus_barcodes = NULL,
+    training_debris_barcodes = NULL, bounds_debris = NULL,
+    verbose = TRUE
 ) {
-  if (useCellBenderFeatures) {
-    result <- (labelTrainingDataCBRB(cell_features, bounds_empty,
-      bounds_non_empty,
-      maxContaminationThreshold = maxContaminationThreshold,
-      verbose = verbose
-    ))
+  if (useCBRBInitialization) {
+    result <- labelTrainingDataCBRB(cell_features, bounds_empty,
+                                    bounds_non_empty,
+                                    maxContaminationThreshold = maxContaminationThreshold,
+                                    verbose = verbose
+    )
   } else {
     result <- labelTrainingDataDefault(cell_features, bounds_empty,
-      bounds_non_empty,
-      training_empty_barcodes = training_empty_barcodes,
-      training_nucleus_barcodes = training_nucleus_barcodes,
-      training_debris_barcodes = training_debris_barcodes,
-      bounds_debris = bounds_debris,
-      verbose = verbose
+                                       bounds_non_empty,
+                                       training_empty_barcodes = training_empty_barcodes,
+                                       training_nucleus_barcodes = training_nucleus_barcodes,
+                                       training_debris_barcodes = training_debris_barcodes,
+                                       bounds_debris = bounds_debris,
+                                       verbose = verbose
     )
   }
   return(result)
 }
 
-logTrainingDataSelection <- function(cell_features_labeled) {
-  numEmpty <- 0
-  numNonEmpty <- 0
-  numDebris <- 0
-  if ("training_label_class" %in% colnames(cell_features_labeled)) {
-    numEmpty <- sum(
-      cell_features_labeled$training_label_class == "empty",
-      na.rm = TRUE
-    )
-    numNonEmpty <- sum(
-      cell_features_labeled$training_label_class == "nucleus",
-      na.rm = TRUE
-    )
-    numDebris <- sum(
-      cell_features_labeled$training_label_class == "debris",
-      na.rm = TRUE
-    )
-  }
-  log_info("Number of empty exemplars: [", numEmpty, "]")
-  log_info("Number of nuclei exemplars: [", numNonEmpty, "]")
-  log_info("Number of debris exemplars: [", numDebris, "]")
-}
-
+#' Label training exemplars using CBRB initialization
+#'
+#' Assign empty-droplet and nucleus training labels using rectangular bounds and
+#' CellBender/CBRB contamination values. Empty exemplars are selected from
+#' `bounds_empty` with `frac_contamination == 1`, reflecting barcodes treated as
+#' fully ambient by CBRB. Nucleus exemplars are selected from
+#' `bounds_non_empty`, or `bounds_non_empty_extended` when supplied, with
+#' `frac_contamination <= maxContaminationThreshold`.
+#'
+#' This initialization path assigns only `"empty"` and `"nucleus"` labels. It
+#' does not assign debris exemplars. Debris exemplar selection is supported by
+#' the default density/barcode-list initialization path.
+#'
+#' @param cell_features A data frame containing barcode-level features. Must
+#'   include `num_transcripts`, `pct_intronic`, and `frac_contamination`.
+#' @param bounds_empty A one-row data frame containing rectangular bounds for
+#'   empty-droplet exemplars.
+#' @param bounds_non_empty A one-row data frame containing rectangular bounds
+#'   for nucleus exemplars.
+#' @param bounds_non_empty_extended Optional one-row data frame containing
+#'   extended nucleus exemplar bounds. If supplied, these bounds are used instead
+#'   of `bounds_non_empty`.
+#' @param maxContaminationThreshold Numeric scalar. Maximum
+#'   `frac_contamination` allowed for nucleus exemplars.
+#' @param verbose Logical scalar. If `TRUE`, emit a log message.
+#'
+#' @return A copy of `cell_features` with a `training_label_class` column.
+#'   CBRB-selected nucleus exemplars are labeled `"nucleus"`, CBRB-selected
+#'   empty exemplars are labeled `"empty"`, and all other barcodes are `NA`.
+#'
+#' @noRd
 labelTrainingDataCBRB <- function(
   cell_features, bounds_empty, bounds_non_empty,
   bounds_non_empty_extended = NULL, maxContaminationThreshold = 0.1,
@@ -932,6 +981,44 @@ labelTrainingDataCBRB <- function(
   return(training_data)
 }
 
+#' Label training exemplars using default density initialization
+#'
+#' Assign empty, nucleus, and optionally debris training labels using the default
+#' initialization path. If upstream barcode lists are supplied for empty and
+#' nucleus exemplars, labels are assigned directly from those barcode lists by
+#' `labelTrainingDataDefaultByBarcode()`. This preserves barcode selections from
+#' any upstream refinement step.
+#'
+#' If barcode lists are not supplied, labels are assigned by rectangular bounds:
+#' `bounds_empty` selects empty exemplars, `bounds_non_empty` selects nucleus
+#' exemplars, and `bounds_debris`, when supplied and finite, selects debris
+#' exemplars.
+#'
+#' This path does not use `frac_contamination` to assign labels. It can be used
+#' even when CBRB features are later included in the SVM feature set.
+#'
+#' @param cell_features A data frame containing barcode-level features. Must
+#'   include `num_transcripts` and `pct_intronic`. Row names must contain cell
+#'   barcodes if barcode-list labeling is used.
+#' @param bounds_empty A one-row data frame containing rectangular bounds for
+#'   empty-droplet exemplars.
+#' @param bounds_non_empty A one-row data frame containing rectangular bounds
+#'   for nucleus exemplars.
+#' @param training_empty_barcodes Optional character vector of empty-droplet
+#'   exemplar barcodes selected upstream.
+#' @param training_nucleus_barcodes Optional character vector of nucleus
+#'   exemplar barcodes selected upstream.
+#' @param training_debris_barcodes Optional character vector of debris exemplar
+#'   barcodes selected upstream.
+#' @param bounds_debris Optional one-row data frame containing rectangular
+#'   bounds for debris exemplars.
+#' @param verbose Logical scalar. If `TRUE`, emit a log message.
+#'
+#' @return A copy of `cell_features` with a `training_label_class` column.
+#'   Selected exemplars are labeled `"empty"`, `"nucleus"`, or `"debris"`.
+#'   Barcodes not selected as exemplars are `NA`.
+#'
+#' @noRd
 labelTrainingDataDefault <- function(
   cell_features,
   bounds_empty,
@@ -1020,6 +1107,30 @@ labelTrainingDataDefaultByBarcode <- function(
 
   training_data
 }
+
+logTrainingDataSelection <- function(cell_features_labeled) {
+  numEmpty <- 0
+  numNonEmpty <- 0
+  numDebris <- 0
+  if ("training_label_class" %in% colnames(cell_features_labeled)) {
+    numEmpty <- sum(
+      cell_features_labeled$training_label_class == "empty",
+      na.rm = TRUE
+    )
+    numNonEmpty <- sum(
+      cell_features_labeled$training_label_class == "nucleus",
+      na.rm = TRUE
+    )
+    numDebris <- sum(
+      cell_features_labeled$training_label_class == "debris",
+      na.rm = TRUE
+    )
+  }
+  log_info("Number of empty exemplars: [", numEmpty, "]")
+  log_info("Number of nuclei exemplars: [", numNonEmpty, "]")
+  log_info("Number of debris exemplars: [", numDebris, "]")
+}
+
 
 # Function to merge dataframes
 merge_bounds <- function(df1, df2) {
@@ -1771,16 +1882,33 @@ plotCellTypeIntervals <- function(
 plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
   strTitle <- "Selected Nuclei"
 
-  df <- cell_features_result[cell_features_result$barcode_class == "nucleus", ]
+  df <- cell_features_result[
+    which(cell_features_result[["barcode_class"]] == "nucleus"),
+  ]
   umi_min_threshold <- min(log10(df[["num_transcripts"]]))
   intronic_min_threshold <- min(df[["pct_intronic"]])
 
-  # TO MAKE R CMD CHECK HAPPY
-  num_transcripts <- pct_intronic <- barcode_class <- NULL
+  plot_df <- cell_features_result
+  plot_df$plot_class <- "other"
+  plot_df$plot_class[
+    plot_df[["barcode_class"]] == "nucleus"
+  ] <- "nucleus"
+  plot_df$plot_class[
+    plot_df[["barcode_class"]] == "debris"
+  ] <- "debris"
 
-  p <- ggplot(cell_features_result, aes(
+  plot_df$plot_class <- factor(
+    plot_df$plot_class,
+    levels = c("other", "debris", "nucleus")
+  )
+
+  # TO MAKE R CMD CHECK HAPPY
+  num_transcripts <- pct_intronic <- plot_class <- NULL
+
+  p <- ggplot(plot_df, aes(
     x = log10(num_transcripts),
-    y = pct_intronic, color = barcode_class
+    y = pct_intronic,
+    color = plot_class
   )) +
     ggrastr::rasterize(geom_point(size = size, alpha = alpha), dpi = 900) +
     labs(
@@ -1793,9 +1921,15 @@ plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
       values = c(
         "nucleus" = "green",
         "debris" = "orange",
-        "empty_or_other" = "lightblue"
+        "other" = "grey80"
       ),
-      na.value = "grey80"
+      breaks = c("debris", "nucleus", "other"),
+      labels = c(
+        "debris" = "debris",
+        "nucleus" = "nucleus",
+        "other" = "other"
+      ),
+      drop = TRUE
     ) +
     coord_cartesian(xlim = log10_UMI_AXIS_RANGE_NEW) +
     theme_minimal() +
