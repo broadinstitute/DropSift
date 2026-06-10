@@ -16,6 +16,9 @@
 #' @param numGenes The number of genes to select for each module.
 #' @param useCellBenderFeatures If true, additional plots are generated to
 #'   compare the empty module score to cellbender fraction of UMIs removed.
+#' @param min_pseudobulk_observations The minimum number of pseudobulked
+#'   observations required in each comparison group before differential
+#'   expression and module scoring are attempted.
 #' @param verbose A boolean indicating whether to print log messages.
 #' @return A list containing the cell features with the gene module scores and
 #'   QC plots. If there are no differentially expressed genes, the
@@ -28,6 +31,7 @@ computeSvmGeneModuleScore <- function(
   useCellBenderFeatures = TRUE, negative_class = "empty",
   min_nucleus_exemplars = 10,
   min_negative_exemplars = 10,
+  min_pseudobulk_observations = 10,
   verbose = FALSE
 ) {
   module_score_name <- paste0(negative_class, "_gene_module_score")
@@ -92,6 +96,31 @@ computeSvmGeneModuleScore <- function(
     showPlot = FALSE,
     verbose = verbose
   )
+
+  pseudobulk_group_counts <- countPseudobulkTrainingIdentities(
+    seurat_object_pseudobulked
+  )
+  num_pseudobulk_nuclei <- getNamedCount(
+    pseudobulk_group_counts,
+    "nuclei"
+  )
+  num_pseudobulk_negative <- getNamedCount(
+    pseudobulk_group_counts,
+    negative_class
+  )
+
+  if (num_pseudobulk_nuclei < min_pseudobulk_observations ||
+    num_pseudobulk_negative < min_pseudobulk_observations) {
+    log_warn(
+      "Skipping gene module score [", module_score_name,
+      "] because pseudobulked class counts are nuclei [",
+      num_pseudobulk_nuclei, "] and ", negative_class, " [",
+      num_pseudobulk_negative, "]. Minimum required for each class is [",
+      min_pseudobulk_observations, "]."
+    )
+    return(empty_result)
+  }
+
   seurat_object_pseudobulked <- NormalizeData(seurat_object_pseudobulked,
     normalization.method = "LogNormalize", scale.factor = 10000,
     verbose = verbose
@@ -173,6 +202,24 @@ makeModuleGeneTable <- function(deWilcoxPB, geneList) {
 
 checkNoDifferentialGenes <- function(geneListDown) {
   return(length(geneListDown) == 0)
+}
+
+countPseudobulkTrainingIdentities <- function(seurat_object) {
+  metadata <- seurat_object[[]]
+
+  if (!"training_identity" %in% colnames(metadata)) {
+    return(integer(0))
+  }
+
+  return(table(metadata$training_identity))
+}
+
+getNamedCount <- function(counts, name) {
+  if (!name %in% names(counts)) {
+    return(0L)
+  }
+
+  return(as.integer(counts[[name]]))
 }
 
 makeEmptyGeneModuleResult <- function(
