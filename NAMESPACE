@@ -36,16 +36,22 @@ import(rhdf5)
 importFrom(cluster,silhouette)
 importFrom(e1071,svm)
 importFrom(grDevices,chull)
-importFrom(graphics,abline)
-importFrom(graphics,lines)
-importFrom(graphics,par)
-importFrom(graphics,rect)
-importFrom(graphics,smoothScatter)
-importFrom(graphics,title)
+importFrom(graphics,
+  abline,
+  lines,
+  par,
+  rect,
+  smoothScatter,
+  title
+)
 importFrom(pastecs,turnpoints)
-importFrom(scales,comma_format)
-importFrom(scales,rescale)
-importFrom(stats,density)
-importFrom(stats,median)
-importFrom(stats,predict)
+importFrom(scales,
+  comma_format,
+  rescale
+)
+importFrom(stats,
+  density,
+  median,
+  predict
+)
 importFrom(utils,write.table)
