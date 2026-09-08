@@ -21,8 +21,11 @@
 #'   expression and module scoring are attempted.
 #' @param verbose A boolean indicating whether to print log messages.
 #' @return A list containing the cell features with the gene module scores and
-#'   QC plots. If there are no differentially expressed genes, the
-#'   empty_gene_module_score will be set to NA and the plots will be NULL.
+#'   QC plots, plus a `valid` flag and a `reason` string. If the gene module
+#'   score could not be computed (for example because there are no
+#'   differentially expressed genes), `valid` is FALSE, `reason` describes
+#'   why, `score` is set to NA for every cell, and `plots` contains labelled
+#'   placeholder plots rather than NULL.
 #' @import Seurat Matrix methods
 #' @noRd
 #'
@@ -41,14 +44,13 @@ computeSvmGeneModuleScore <- function(
     "] for nucleus vs [", negative_class, "]"
   )
 
-  empty_result <- makeEmptyGeneModuleResult(
-    cell_features_labeled = cell_features_labeled,
-    module_score_name = module_score_name
-  )
-
   if (!"training_label_class" %in% colnames(cell_features_labeled)) {
     log_warn("training_label_class not found. Skipping gene module score.")
-    return(empty_result)
+    return(makeEmptyGeneModuleResult(
+      cell_features_labeled = cell_features_labeled,
+      module_score_name = module_score_name,
+      reason = "training_label_class column not found"
+    ))
   }
 
   num_nuclei <- sum(
@@ -69,7 +71,15 @@ computeSvmGeneModuleScore <- function(
       "]. Minimums are nucleus [", min_nucleus_exemplars,
       "] and ", negative_class, " [", min_negative_exemplars, "]."
     )
-    return(empty_result)
+    return(makeEmptyGeneModuleResult(
+      cell_features_labeled = cell_features_labeled,
+      module_score_name = module_score_name,
+      reason = paste0(
+        "too few exemplars (nucleus=", num_nuclei, ", ", negative_class,
+        "=", num_negative, "; minimums are nucleus=", min_nucleus_exemplars,
+        ", ", negative_class, "=", min_negative_exemplars, ")"
+      )
+    ))
   }
 
   dgeMatrix <- methods::as(dgeMatrix, "CsparseMatrix")
@@ -118,7 +128,15 @@ computeSvmGeneModuleScore <- function(
       num_pseudobulk_negative, "]. Minimum required for each class is [",
       min_pseudobulk_observations, "]."
     )
-    return(empty_result)
+    return(makeEmptyGeneModuleResult(
+      cell_features_labeled = cell_features_labeled,
+      module_score_name = module_score_name,
+      reason = paste0(
+        "too few pseudobulked observations (nuclei=", num_pseudobulk_nuclei,
+        ", ", negative_class, "=", num_pseudobulk_negative,
+        "; minimum for each class is ", min_pseudobulk_observations, ")"
+      )
+    ))
   }
 
   seurat_object_pseudobulked <- NormalizeData(seurat_object_pseudobulked,
@@ -140,7 +158,11 @@ computeSvmGeneModuleScore <- function(
       "No differentially expressed genes found for module score [",
       module_score_name, "]."
     )
-    return(empty_result)
+    return(makeEmptyGeneModuleResult(
+      cell_features_labeled = cell_features_labeled,
+      module_score_name = module_score_name,
+      reason = "no differentially expressed genes found"
+    ))
   }
 
   moduleGeneTable <- makeModuleGeneTable(deWilcoxPB, geneListDown)
@@ -173,7 +195,9 @@ computeSvmGeneModuleScore <- function(
     score = scored_features[[module_score_name]],
     downGenes = geneListDown,
     moduleGeneTable = moduleGeneTable,
-    plots = gene_module_plots
+    plots = gene_module_plots,
+    valid = TRUE,
+    reason = NA_character_
   )
 }
 
@@ -224,15 +248,19 @@ getNamedCount <- function(counts, name) {
 
 makeEmptyGeneModuleResult <- function(
   cell_features_labeled,
-  module_score_name = "empty_gene_module_score"
+  module_score_name = "empty_gene_module_score",
+  reason = "gene module score unavailable"
 ) {
   list(
     score = rep(NA_real_, nrow(cell_features_labeled)),
     downGenes = NULL,
     moduleGeneTable = data.frame(),
     plots = makeEmptyGeneModulePlots(
-      module_score_name = module_score_name
-    )
+      module_score_name = module_score_name,
+      reason = reason
+    ),
+    valid = FALSE,
+    reason = reason
   )
 }
 
@@ -291,18 +319,27 @@ generateGeneModulePlots <- function(
 
 makeEmptyGeneModulePlots <- function(
   module_score_name = "empty_gene_module_score",
+  reason = "gene module score unavailable",
   negative_class = "empty"
 ) {
-  p_empty <- ggplot() +
-    theme_void()
+  p_failed <- makeFailedPlotPlaceholder(
+    strTitle = module_score_name,
+    reason = reason
+  )
 
   result <- list()
-  result[[paste0(module_score_name, "_training_data")]] <- p_empty
-  result[[module_score_name]] <- p_empty
+  result[[paste0(module_score_name, "_training_data")]] <- p_failed
+  result[[module_score_name]] <- p_failed
 
   if (module_score_name == "empty_gene_module_score") {
-    result[["frac_contamination"]] <- p_empty
-    result[["empty_gene_module_score_vs_contam"]] <- p_empty
+    result[["frac_contamination"]] <- makeFailedPlotPlaceholder(
+      strTitle = "frac_contamination",
+      reason = paste0(module_score_name, " unavailable: ", reason)
+    )
+    result[["empty_gene_module_score_vs_contam"]] <- makeFailedPlotPlaceholder(
+      strTitle = "empty_gene_module_score_vs_contam",
+      reason = reason
+    )
   }
 
   result

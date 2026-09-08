@@ -1,5 +1,14 @@
 # DropSift News
 
+## DropSift (development)
+### 🔧 Bug Fixes & Improvements
+- `runIntronicSVM()`/`SvmNucleusCaller()` no longer abort when the empty gene
+  module score cannot be computed (e.g. when nucleus exemplars are dominated
+  by empty droplets and no differentially expressed genes are found). The
+  feature is dropped from the SVM and the run continues with a warning.
+- Gene module diagnostic plots that could not be computed now render a
+  labelled "GENE MODULE SCORE FAILED" placeholder instead of a blank panel.
+
 ## DropSift 1.0.0 (Bioconductor Release)
 ### 🆕 Initial Release
 - First public release of `DropSift` on Bioconductor.

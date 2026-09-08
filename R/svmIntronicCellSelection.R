@@ -238,6 +238,23 @@ callByIntronicSVM <- function(
   cell_features_labeled$empty_gene_module_score <-
     empty_module_result$score
 
+  degraded_warnings <- NULL
+
+  if (!empty_module_result$valid) {
+    log_warn(
+      "The empty gene module score is unavailable (",
+      empty_module_result$reason, "). The nucleus exemplars likely also ",
+      "contained a majority of empty droplets. Removing [",
+      emptyGeneModuleScoreColName, "] from the SVM features and continuing ",
+      "with a degraded result."
+    )
+    features <- setdiff(features, emptyGeneModuleScoreColName)
+    degraded_warnings <- c(
+      degraded_warnings,
+      paste0("empty gene module score unavailable (", empty_module_result$reason, ")")
+    )
+  }
+
   debris_module_result <- computeSvmGeneModuleScore(
     cell_features_labeled = cell_features_labeled,
     dgeMatrix = dgeMatrix,
@@ -251,6 +268,13 @@ callByIntronicSVM <- function(
 
   cell_features_labeled$debris_gene_module_score <-
     debris_module_result$score
+
+  if (!debris_module_result$valid) {
+    degraded_warnings <- c(
+      degraded_warnings,
+      paste0("debris gene module score unavailable (", debris_module_result$reason, ")")
+    )
+  }
 
   geneModulePlots <- c(
     empty_module_result$plots,
@@ -268,7 +292,10 @@ callByIntronicSVM <- function(
   )
 
   if (is.null(svm_empty_result)) {
-    stop("Unable to train the nucleus-vs-empty SVM.")
+    stop(
+      "Unable to train the nucleus-vs-empty SVM using features [",
+      paste(features, collapse = ", "), "]."
+    )
   }
 
   features_nucleus_vs_debris <- c(
@@ -277,7 +304,7 @@ callByIntronicSVM <- function(
   )
 
   svm_debris_result <- NULL
-  if (!is.null(debris_module_result$downGenes)) {
+  if (debris_module_result$valid) {
     svm_debris_result <- runBinarySVM(
       cell_features_labeled = cell_features_labeled,
       features = features_nucleus_vs_debris,
@@ -295,7 +322,7 @@ callByIntronicSVM <- function(
   ))
 
   svm_debris_vs_empty_result <- NULL
-  if (!is.null(debris_module_result$downGenes)) {
+  if (debris_module_result$valid) {
     svm_debris_vs_empty_result <- runBinarySVM(
       cell_features_labeled = cell_features_labeled,
       features = features_debris_vs_empty,
@@ -435,7 +462,8 @@ callByIntronicSVM <- function(
     } else {
       svm_debris_vs_empty_result$trainingData
     },
-    use2DTrainingRefinement = use2DTrainingRefinement
+    use2DTrainingRefinement = use2DTrainingRefinement,
+    degradedWarnings = degraded_warnings
   ))
 }
 
@@ -1263,6 +1291,20 @@ scaleFeatures <- function(cell_features_labeled, features) {
 
 ######################## PLOTTING CODE
 
+#' Build the title block used on each PDF summary page.
+#'
+#' @param dataset_name The name of the dataset.
+#' @return A cowplot ggdraw object.
+#' @noRd
+makeSVMPageTitle <- function(dataset_name) {
+  cowplot::ggdraw() +
+    cowplot::draw_label(
+      dataset_name,
+      fontface = "bold",
+      size = 12,
+      hjust = 0.5
+    )
+}
 
 #' Create a single page of cell selection plots
 #'
@@ -1298,13 +1340,7 @@ arrangeSVMCellSelectionPlots <- function(
     nrow = 3
   )
 
-  title <- cowplot::ggdraw() +
-    cowplot::draw_label(
-      dataset_name,
-      fontface = "bold",
-      size = 12,
-      hjust = 0.5
-    )
+  title <- makeSVMPageTitle(dataset_name)
 
   final_plot <- cowplot::plot_grid(
     title,
@@ -1418,13 +1454,7 @@ arrangeSVMCellSelectionPlotsNoCBRB <- function(
     nrow = 3
   )
 
-  title <- cowplot::ggdraw() +
-    cowplot::draw_label(
-      dataset_name,
-      fontface = "bold",
-      size = 12,
-      hjust = 0.5
-    )
+  title <- makeSVMPageTitle(dataset_name)
 
   final_plot <- cowplot::plot_grid(
     title,
@@ -1468,7 +1498,10 @@ arrangeSVMCellSelectionPlotsNoCBRB <- function(
 #' @param dataset_name The name of the dataset
 #' @import cowplot ggplot2
 #' @noRd
-arrangeSVMGeneModulePlots <- function(plots, dataset_name) {
+arrangeSVMGeneModulePlots <- function(
+  plots,
+  dataset_name
+) {
   # all plots are ggplot2 plots.
 
   plots_custom_theme <- lapply(plots, function(plot) plot + custom_theme())
@@ -1493,16 +1526,10 @@ arrangeSVMGeneModulePlots <- function(plots, dataset_name) {
   plot_grid <- plot_grid(plotlist = plots_custom_theme, ncol = 2, nrow = nrow)
 
   # Add the title
-  title <- ggdraw() + draw_label(dataset_name,
-    fontface = "bold", size = 12,
-    hjust = 0.5
-  )
+  title <- makeSVMPageTitle(dataset_name)
 
   # Combine the title and the plot grid
-  final_plot <- plot_grid(title, plot_grid, ncol = 1, rel_heights = c(
-    0.05,
-    1
-  ))
+  final_plot <- plot_grid(title, plot_grid, ncol = 1, rel_heights = c(0.05, 1))
   return(final_plot)
 }
 
@@ -2121,6 +2148,36 @@ plotCellProbabilities <- function(
 
 ####################### GENE MODULE PLOTS
 
+#' Build a placeholder plot for a gene module score that could not be computed.
+#'
+#' @param strTitle Title identifying which plot/module failed.
+#' @param reason A short human-readable explanation of the failure.
+#' @return A ggplot2 object with no data, displaying the failure message.
+#' @noRd
+makeFailedPlotPlaceholder <- function(
+  strTitle = "",
+  reason = "gene module score unavailable"
+) {
+  ggplot() +
+    ggplot2::annotate(
+      "text",
+      x = 0, y = 0.15,
+      label = "GENE MODULE SCORE FAILED",
+      color = "red", fontface = "bold", size = 3
+    ) +
+    ggplot2::annotate(
+      "text",
+      x = 0, y = -0.15,
+      label = reason,
+      color = "grey30", size = 2.5
+    ) +
+    ggplot2::xlim(-1, 1) +
+    ggplot2::ylim(-1, 1) +
+    ggtitle(strTitle) +
+    theme_void() +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+}
+
 scatterPlotModuleScore <- function(
   cell_features,
   moduleName = "nuclei_gene_module_score", strTitle = "",
@@ -2247,7 +2304,9 @@ plotCellProbabilityConditionalCbrb <- function(
 #'   overplotting.
 #' @param point_size Numeric point size passed to [ggplot2::geom_point()].
 #'
-#' @return A ggplot object.
+#' @return A ggplot object. If no cell barcodes have finite scores for both
+#'   gene modules (e.g. because one of the gene module scores could not be
+#'   computed), a labelled placeholder plot is returned instead.
 #'
 #' @export
 plotGeneModuleScoresByExemplarClass <- function(
@@ -2275,6 +2334,14 @@ plotGeneModuleScoresByExemplarClass <- function(
     !is.na(cell_features_labeled$training_label_class)
 
   plotDf <- cell_features_labeled[idxKeep, , drop = FALSE]
+
+  if (nrow(plotDf) == 0) {
+    return(makeFailedPlotPlaceholder(
+      strTitle = strTitle,
+      reason = "no cell barcodes have finite scores for both gene modules"
+    ))
+  }
+
   plotDf$training_label_class <- factor(
     plotDf$training_label_class,
     levels = c("empty", "nucleus", "debris")
