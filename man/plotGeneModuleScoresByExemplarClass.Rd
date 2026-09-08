@@ -24,7 +24,9 @@ overplotting.}
 \item{point_size}{Numeric point size passed to \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
 }
 \value{
-A ggplot object.
+A ggplot object. If no cell barcodes have finite scores for both
+gene modules (e.g. because one of the gene module scores could not be
+computed), a labelled placeholder plot is returned instead.
 }
 \description{
 This diagnostic plot compares the empty-droplet gene module score against the
