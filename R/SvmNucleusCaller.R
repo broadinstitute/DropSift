@@ -22,7 +22,7 @@
 new_SvmNucleusCaller <- function(
   results, cellProbabilityThreshold,
   maxUmisEmpty, forceTwoClusterSolution, useCBRBInitialization,
-  use2DTrainingRefinement
+  use2DTrainingRefinement, twoClusterFallbackRatio
 ) {
   stopifnot(is.list(results))
   results$useCBRBInitialization <- useCBRBInitialization
@@ -30,6 +30,7 @@ new_SvmNucleusCaller <- function(
   results$cellProbabilityThreshold <- cellProbabilityThreshold
   results$maxUmisEmpty <- maxUmisEmpty
   results$forceTwoClusterSolution <- forceTwoClusterSolution
+  results$twoClusterFallbackRatio <- twoClusterFallbackRatio
   return(structure(results, class = c("SvmNucleusCaller", "list")))
 }
 
@@ -62,11 +63,13 @@ contaminationColName <- "frac_contamination"
 #'   featureColumns are determined based on other parameters.  See
 #'   [configureFeatureColumns()].
 #' @param forceTwoClusterSolution When true, the initialization of the SVM will
-#'   attempt to find a solution with two clusters. In cases where an experiment
-#'   is overloaded with nuclei, this may correct the initial set of nuclei and
-#'   empty droplets selected. This argument is specific to the density-style
-#'   selection of exemplars that is only applicable when useCBRBFeatures is
-#'   false.
+#'   unconditionally use a solution with two clusters, instead of the default
+#'   solution. In cases where an experiment is overloaded with nuclei, this may
+#'   correct the initial set of nuclei and empty droplets selected. This
+#'   argument is specific to the density-style selection of exemplars that is
+#'   only applicable when useCBRBFeatures is false. This is a manual override;
+#'   see `twoClusterFallbackRatio` for the automatic alternative used when this
+#'   is false.
 #' @param useCBRBFeatures When true, the cell bender feature frac_contamination
 #'   is used for cell selection. When false, these features are not used.  This
 #'   modifies the featureColumns argument.
@@ -78,6 +81,20 @@ contaminationColName <- "frac_contamination"
 #'   refines rectangular empty-droplet and nucleus exemplar selections with
 #'   connected components from a two-dimensional HDR. The default is false.
 #'   This is EXPERIMENTAL.
+#' @param twoClusterFallbackRatio Numeric scalar or NULL. Ignored when
+#'   forceTwoClusterSolution is true. Otherwise, the two-cluster solution is
+#'   automatically adopted only when its silhouette score is at least this
+#'   many times the default solution's silhouette score. This guards against
+#'   experiments where the default initialization's nucleus exemplar region
+#'   was diluted by a near-ambient density mode; requiring a large ratio
+#'   (rather than simply preferring whichever solution scores higher) protects
+#'   against a degenerate two-cluster solution being adopted over a default
+#'   solution that is merely mediocre rather than actually wrong. Since
+#'   silhouette width cannot exceed 1, the two-cluster solution is only ever
+#'   computed when the default solution's silhouette is at most
+#'   1 / twoClusterFallbackRatio (0.5 at the default ratio of 2); above that,
+#'   no two-cluster candidate could possibly meet the threshold. Set to NULL
+#'   to disable the automatic fallback and always use the default solution.
 #' @param datasetName A string to identify the dataset in plots.
 #' @return An SvmNucleusCaller object
 #' @seealso [configureFeatureColumns()]
@@ -104,6 +121,7 @@ SvmNucleusCaller <- function(
   cellProbabilityThreshold = NULL, maxUmisEmpty = 50, featureColumns = NULL,
   forceTwoClusterSolution = FALSE, useCBRBFeatures = TRUE,
   useCBRBInitialization = useCBRBFeatures, use2DTrainingRefinement = FALSE,
+  twoClusterFallbackRatio = 2,
   datasetName = ""
 ) {
   if (useCBRBInitialization == TRUE & useCBRBFeatures == FALSE) {
@@ -128,6 +146,8 @@ SvmNucleusCaller <- function(
   stopifnot(is.character(datasetName))
   stopifnot(is.logical(useCBRBFeatures))
   stopifnot(is.logical(use2DTrainingRefinement))
+  stopifnot(is.null(twoClusterFallbackRatio) ||
+    (is.numeric(twoClusterFallbackRatio) && twoClusterFallbackRatio > 0))
 
   if (!is.null(dgeMatrix)) {
     log_info(sprintf(
@@ -170,7 +190,8 @@ SvmNucleusCaller <- function(
     max_umis_empty = maxUmisEmpty, features = featureColumns,
     useCBRBInitialization = useCBRBInitialization,
     forceTwoClusterSolution = forceTwoClusterSolution,
-    use2DTrainingRefinement = use2DTrainingRefinement
+    use2DTrainingRefinement = use2DTrainingRefinement,
+    twoClusterFallbackRatio = twoClusterFallbackRatio
   )
 
   results$cell_features <- data.frame(
@@ -180,7 +201,7 @@ SvmNucleusCaller <- function(
   return(new_SvmNucleusCaller(
     results, cellProbabilityThreshold, maxUmisEmpty,
     forceTwoClusterSolution, useCBRBInitialization,
-    use2DTrainingRefinement
+    use2DTrainingRefinement, twoClusterFallbackRatio
   ))
 }
 
@@ -388,6 +409,12 @@ print.SvmNucleusCaller <- function(x, ...) {
     cellProbabilityThreshold <- svmNucleusCaller$cellProbabilityThreshold
   }
 
+  if (is.null(svmNucleusCaller$twoClusterFallbackRatio)) {
+    twoClusterFallbackRatio <- "NULL"
+  } else {
+    twoClusterFallbackRatio <- svmNucleusCaller$twoClusterFallbackRatio
+  }
+
   num_selected <- length(which(
     svmNucleusCaller$cell_features$barcode_class == "nucleus"
   ))
@@ -403,6 +430,11 @@ print.SvmNucleusCaller <- function(x, ...) {
   cat(
     "forceTwoClusterSolution: ",
     svmNucleusCaller$forceTwoClusterSolution,
+    "\n"
+  )
+  cat(
+    "twoClusterFallbackRatio: ",
+    twoClusterFallbackRatio,
     "\n"
   )
   cat(

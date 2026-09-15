@@ -16,6 +16,7 @@ runIntronicSVM(
   useCBRBInitialization = useCBRBFeatures,
   forceTwoClusterSolution = FALSE,
   use2DTrainingRefinement = FALSE,
+  twoClusterFallbackRatio = 2,
   outPDF = NULL,
   outFeaturesFile = NULL,
   outCellBenderInitialParameters = NULL,
@@ -68,16 +69,33 @@ This option can be false and useCBRBFeatures to force DropSift to use the
 non-CBRB initialization but still include CBRB in the model features.}
 
 \item{forceTwoClusterSolution}{When true, the initialization of the SVM will
-attempt to find a solution with two clusters. In cases where an experiment
-is overloaded with nuclei, this may correct the initial set of nuclei and
-empty droplets selected. This argument is specific to the density-style
-selection of exemplars that is only applicable when useCBRBFeatures is
-false.}
+unconditionally use a solution with two clusters, instead of the default
+solution. In cases where an experiment is overloaded with nuclei, this may
+correct the initial set of nuclei and empty droplets selected. This
+argument is specific to the density-style selection of exemplars that is
+only applicable when useCBRBFeatures is false. This is a manual override;
+see \code{twoClusterFallbackRatio} for the automatic alternative used when this
+is false.}
 
 \item{use2DTrainingRefinement}{EXPERIMENTAL (!!!) When true, the density-only
 initialization refines rectangular empty-droplet and nucleus exemplar
 selections with connected components from a two-dimensional HDR. The
 default is false.}
+
+\item{twoClusterFallbackRatio}{Numeric scalar or NULL. Ignored when
+forceTwoClusterSolution is true. Otherwise, the two-cluster solution is
+automatically adopted only when its silhouette score is at least this
+many times the default solution's silhouette score. This guards against
+experiments where the default initialization's nucleus exemplar region
+was diluted by a near-ambient density mode; requiring a large ratio
+(rather than simply preferring whichever solution scores higher) protects
+against a degenerate two-cluster solution being adopted over a default
+solution that is merely mediocre rather than actually wrong. Since
+silhouette width cannot exceed 1, the two-cluster solution is only ever
+computed when the default solution's silhouette is at most
+1 / twoClusterFallbackRatio (0.5 at the default ratio of 2); above that,
+no two-cluster candidate could possibly meet the threshold. Set to NULL
+to disable the automatic fallback and always use the default solution.}
 
 \item{outPDF}{The PDF file to write the plots to.}
 

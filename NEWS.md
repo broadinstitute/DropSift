@@ -8,6 +8,16 @@
   feature is dropped from the SVM and the run continues with a warning.
 - Gene module diagnostic plots that could not be computed now render a
   labelled "GENE MODULE SCORE FAILED" placeholder instead of a blank panel.
+- `runIntronicSVM()`/`SvmNucleusCaller()`/`findTrainingDataBounds()` gain a
+  new `twoClusterFallbackRatio` parameter (default `2`). When the default
+  exemplar-selection solution's silhouette score is weak, the two-cluster
+  solution is now computed automatically and adopted in place of the default
+  when its silhouette score is at least `twoClusterFallbackRatio` times
+  better, correcting cases where the default solution's nucleus exemplars
+  were diluted by a near-ambient density mode. This replaces the need to
+  manually decide when to pass `forceTwoClusterSolution = TRUE`. Set
+  `twoClusterFallbackRatio = NULL` to disable and always use the default
+  solution.
 
 ## DropSift 1.0.0 (Bioconductor Release)
 ### 🆕 Initial Release
