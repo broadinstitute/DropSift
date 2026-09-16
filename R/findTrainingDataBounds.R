@@ -94,8 +94,7 @@ findTrainingDataBounds <- function(
 ) {
   # If using CBRB initialization, use the CBRB-specific bounds method.
   if (useCBRBInitialization) {
-    return(findTrainingDataBoundsCBRB(cell_features
-    ))
+    return(findTrainingDataBoundsCBRB(cell_features))
   }
 
   # A lower UMI threshold is used for some cases.

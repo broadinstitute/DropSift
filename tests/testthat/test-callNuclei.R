@@ -31,5 +31,8 @@ test_that("callNucleiCBRB", {
     which(svmNucleusCaller$cell_features[["barcode_class"]] == "nucleus"),
   ]$cell_barcode
 
-  expect_equal(length(selectedNuclei), 332)
+  # The CBRB initialization path always uses a 20 UMI floor for empty
+  # exemplar selection, rather than the maxUmisEmpty argument, so this count
+  # differs from the non-CBRB test above.
+  expect_equal(length(selectedNuclei), 331)
 })

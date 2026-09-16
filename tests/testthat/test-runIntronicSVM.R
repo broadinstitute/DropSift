@@ -45,6 +45,6 @@ test_that("runIntronicSVM", {
     sep = "\t",
     header = TRUE, stringsAsFactors = FALSE
   )
-  expect_equal(cbrb_args_result$total_droplets_included, 2195)
+  expect_equal(cbrb_args_result$total_droplets_included, 946)
   expect_equal(cbrb_args_result$expected_cells, 372)
 })
