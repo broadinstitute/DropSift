@@ -526,12 +526,13 @@ getCBRBArgs.SvmNucleusCaller <- function(svmNucleusCaller) {
 
   expected_cells <- length(which(df$barcode_class == "nucleus"))
 
-  #SF says: I think approximately a 10:1 ratio of total-droplets:expected-cells
+  # SF says: I think approximately a 10:1 ratio of total-droplets:expected-cells
   # is probably what you don't wanna surpass.  That should be safe
 
-  max_total_droplets=expected_cells*10
-  if (total_droplets_included>max_total_droplets)
-    total_droplets_included=max_total_droplets
+  max_total_droplets <- expected_cells * 10
+  if (total_droplets_included > max_total_droplets) {
+    total_droplets_included <- max_total_droplets
+  }
 
   return(list(
     total_droplets_included = total_droplets_included,
