@@ -2378,10 +2378,10 @@ plotGeneModuleScoresByExemplarClass <- function(
       color = training_label_class
     )
   ) +
-    ggplot2::geom_point(
+    ggrastr::rasterize(ggplot2::geom_point(
       alpha = point_alpha,
       size = point_size
-    ) +
+    ), dpi = 900) +
     ggplot2::scale_color_manual(
       values = c(
         empty = "red",
