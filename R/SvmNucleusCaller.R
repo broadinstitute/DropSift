@@ -467,7 +467,10 @@ print.SvmNucleusCaller <- function(x, ...) {
 #'
 #' @param svmNucleusCaller an object of class
 #'   SvmNucleusCaller(useCBRBFeatures=FALSE)
-#' @return a list with two elements: total_droplets_included and expected_cells
+#' @return a list with two elements: total_droplets_included and
+#'   expected_cells. Both are `NA` if the CBRB arguments could not be
+#'   estimated, for example because no barcodes were classified as nucleus
+#'   or no empty exemplars were found.
 #' @examples
 #' # Load up the example dataset and run the SVM.
 #' # This mirrors the included unit test.
@@ -511,7 +514,11 @@ getCBRBArgs.SvmNucleusCaller <- function(svmNucleusCaller) {
   idxEmpty <- which(df$training_label_class == "empty")
 
   if (length(idxEmpty) == 0) {
-    stop("No empty exemplars found. Cannot estimate CBRB arguments.")
+    log_warn(
+      "No empty exemplars found. Cannot estimate CBRB arguments. ",
+      "Returning NA."
+    )
+    return(makeEmptyCBRBArgs())
   }
 
   # SF suggests that I use all cell barcodes with UMIs > the empty exemplars.
@@ -526,6 +533,17 @@ getCBRBArgs.SvmNucleusCaller <- function(svmNucleusCaller) {
 
   expected_cells <- length(which(df$barcode_class == "nucleus"))
 
+  # No barcodes were classified as nucleus (e.g. the nucleus-vs-empty SVM
+  # could not be trained). A 10:1 ratio against 0 expected cells is
+  # meaningless, so return NA rather than a plausible-looking 0.
+  if (expected_cells == 0) {
+    log_warn(
+      "No barcodes were classified as nucleus. Cannot estimate CBRB ",
+      "arguments. Returning NA."
+    )
+    return(makeEmptyCBRBArgs())
+  }
+
   # SF says: I think approximately a 10:1 ratio of total-droplets:expected-cells
   # is probably what you don't wanna surpass.  That should be safe
 
@@ -538,6 +556,16 @@ getCBRBArgs.SvmNucleusCaller <- function(svmNucleusCaller) {
     total_droplets_included = total_droplets_included,
     expected_cells = expected_cells
   ))
+}
+
+#' Build a placeholder CBRB argument list for a degraded run where the
+#' arguments could not be estimated.
+#' @noRd
+makeEmptyCBRBArgs <- function() {
+  list(
+    total_droplets_included = NA_integer_,
+    expected_cells = NA_integer_
+  )
 }
 
 #' @export

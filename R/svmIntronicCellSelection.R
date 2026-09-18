@@ -159,15 +159,39 @@ runIntronicSVM <- function(
 
   cell_features_result <- svmNucleusCaller$cell_features
 
-  # Open the PDF device
+  # Open the PDF device. on.exit() ensures the device is always closed, even
+  # if plotting below fails partway through, so the PDF is never left
+  # truncated/unreadable.
   if (!is.null(outPDF)) {
     grDevices::pdf(outPDF)
+    on.exit(grDevices::dev.off(), add = TRUE)
   }
 
-  plotSvmNucleusCaller(svmNucleusCaller)
+  tryCatch(
+    plotSvmNucleusCaller(svmNucleusCaller),
+    error = function(e) {
+      # Last resort: individual panels are already guarded against failure
+      # (see safePlotPanel()/safeGgdrawPanel()), so reaching here means the
+      # page layout itself failed unexpectedly. Fall back to emitting the
+      # SVM training-selection plot alone, since it is the one plot that
+      # must always be available for inspection.
+      log_warn(
+        "Failed to render the full set of SVM cell selection plots: ",
+        conditionMessage(e), ". Falling back to the training selection plot."
+      )
+      initializationPlot <- svmNucleusCaller$plots$initialization
+      if (!is.null(initializationPlot)) {
+        gridExtra::grid.arrange(initializationPlot)
+      }
+    }
+  )
 
-  if (!is.null(outPDF)) {
-    grDevices::dev.off()
+  if (length(svmNucleusCaller$degradedWarnings) > 0) {
+    warning(
+      "runIntronicSVM completed with a degraded result: ",
+      paste(svmNucleusCaller$degradedWarnings, collapse = "; "),
+      call. = FALSE
+    )
   }
 
   if (!is.null(outFeaturesFile)) {
@@ -310,10 +334,21 @@ callByIntronicSVM <- function(
     min_negative_exemplars = 100
   )
 
-  if (is.null(svm_empty_result)) {
-    stop(
+  nucleus_svm_available <- !is.null(svm_empty_result)
+
+  if (!nucleus_svm_available) {
+    log_warn(
       "Unable to train the nucleus-vs-empty SVM using features [",
-      paste(features, collapse = ", "), "]."
+      paste(features, collapse = ", "),
+      "]. Continuing with a degraded result: no barcodes will be classified ",
+      "as nucleus."
+    )
+    degraded_warnings <- c(
+      degraded_warnings,
+      paste0(
+        "nucleus-vs-empty SVM unavailable (features: ",
+        paste(features, collapse = ", "), ")"
+      )
     )
   }
 
@@ -354,8 +389,11 @@ callByIntronicSVM <- function(
   }
 
   cell_features_result <- cell_features_labeled
-  cell_features_result$p_nucleus_vs_empty <-
+  cell_features_result$p_nucleus_vs_empty <- if (nucleus_svm_available) {
     svm_empty_result$probabilities
+  } else {
+    rep(NA_real_, nrow(cell_features_result))
+  }
 
   gene_module_exemplar_plot <- NULL
 
@@ -400,11 +438,15 @@ callByIntronicSVM <- function(
     probabilityThreshold <- cellProbabilityThreshold
   }
 
-  cell_features_result$barcode_class <- assignBarcodeClass(
-    is_cell_prob = cell_features_result$is_cell_prob,
-    is_debris_prob = cell_features_result$is_debris_prob,
-    probabilityThreshold = probabilityThreshold
-  )
+  cell_features_result$barcode_class <- if (nucleus_svm_available) {
+    assignBarcodeClass(
+      is_cell_prob = cell_features_result$is_cell_prob,
+      is_debris_prob = cell_features_result$is_debris_prob,
+      probabilityThreshold = probabilityThreshold
+    )
+  } else {
+    rep(NA_character_, nrow(cell_features_result))
+  }
 
   # This is a post-SVM rule, not part of any binary classifier. Barcodes
   # below the upper UMI edge of the empty exemplar region are not assigned a
@@ -482,7 +524,8 @@ callByIntronicSVM <- function(
       svm_debris_vs_empty_result$trainingData
     },
     use2DTrainingRefinement = use2DTrainingRefinement,
-    degradedWarnings = degraded_warnings
+    degradedWarnings = degraded_warnings,
+    nucleus_svm_available = nucleus_svm_available
   ))
 }
 
@@ -530,57 +573,85 @@ createSelectionVisualization <- function(
   training_nucleus_barcodes = NULL, training_debris_barcodes = NULL,
   umi_threshold = NULL, debris_intronic_floor = NULL
 ) {
-  p1 <- plotExpressionVsIntronic(cell_features_labeled,
-    title = "All cell barcodes",
-    useCellBenderFeatures = useCellBenderFeatures
+  p1 <- safePlotPanel(
+    plotExpressionVsIntronic(cell_features_labeled,
+      title = "All cell barcodes",
+      useCellBenderFeatures = useCellBenderFeatures
+    ),
+    strTitle = "All cell barcodes",
+    reason = "cell expression vs intronic content unavailable"
   )
 
-  p2 <- cowplot::ggdraw(function() {
-    plotCellTypeIntervals(
-      cell_features_labeled, bounds_empty,
-      bounds_non_empty,
-      bounds_debris = bounds_debris,
-      training_empty_barcodes = training_empty_barcodes,
-      training_nucleus_barcodes = training_nucleus_barcodes,
-      training_debris_barcodes = training_debris_barcodes,
-      umi_threshold = umi_threshold,
-      debris_intronic_floor = debris_intronic_floor,
-      show_1d_bounds = is.null(training_empty_barcodes) ||
-        is.null(training_nucleus_barcodes),
-      show_2d_bounds = !is.null(training_empty_barcodes) &&
-        !is.null(training_nucleus_barcodes)
-    )
-  })
+  # plotCellTypeIntervals() does not depend on the nucleus-vs-empty SVM
+  # result; it renders the training-selection summary directly from the
+  # exemplar bounds/barcodes, so this is the plot most likely to still
+  # succeed when the SVM itself could not be trained.
+  p2 <- safeGgdrawPanel(
+    function() {
+      plotCellTypeIntervals(
+        cell_features_labeled, bounds_empty,
+        bounds_non_empty,
+        bounds_debris = bounds_debris,
+        training_empty_barcodes = training_empty_barcodes,
+        training_nucleus_barcodes = training_nucleus_barcodes,
+        training_debris_barcodes = training_debris_barcodes,
+        umi_threshold = umi_threshold,
+        debris_intronic_floor = debris_intronic_floor,
+        show_1d_bounds = is.null(training_empty_barcodes) ||
+          is.null(training_nucleus_barcodes),
+        show_2d_bounds = !is.null(training_empty_barcodes) &&
+          !is.null(training_nucleus_barcodes)
+      )
+    },
+    strTitle = "SVM Training selection",
+    reason = "training selection summary unavailable"
+  )
 
-  p3 <- plotSelectedCells(cell_features_labeled)
-  p4 <- plotCellProbabilities(cell_features_labeled,
-    strTitle = "Cell Probability"
+  p3 <- safePlotPanel(
+    plotSelectedCells(cell_features_labeled),
+    strTitle = "Selected Nuclei",
+    reason = "no barcodes were classified as nucleus"
+  )
+  p4 <- safePlotPanel(
+    plotCellProbabilities(cell_features_labeled,
+      strTitle = "Cell Probability"
+    ),
+    strTitle = "Cell Probability",
+    reason = "cell probability unavailable"
   )
 
   ambientPeak <- round(median(cell_features_labeled[
     which(cell_features_labeled$barcode_class != "nucleus"),
   ]$num_transcripts, na.rm = TRUE))
 
-  p5 <- ggdraw(function() {
-    plotSelectedCellsSmoothScatter(cell_features_labeled,
-      transcriptFeature = "num_transcripts",
-      strTitlePrefix = paste0(
-        "SVM nuclei method, ambient peak(UMIs) ",
-        ambientPeak
+  p5 <- safeGgdrawPanel(
+    function() {
+      plotSelectedCellsSmoothScatter(cell_features_labeled,
+        transcriptFeature = "num_transcripts",
+        strTitlePrefix = paste0(
+          "SVM nuclei method, ambient peak(UMIs) ",
+          ambientPeak
+        )
       )
-    )
-  })
+    },
+    strTitle = "SVM nuclei method",
+    reason = "selected nuclei density plot unavailable"
+  )
 
   p6 <- ggplot() +
     theme_void()
   if (useCellBenderFeatures) {
-    p6 <- ggdraw(function() {
-      plotSelectedCellsSmoothScatter(cell_features_labeled,
-        transcriptFeature = "num_retained_transcripts",
-        strTitlePrefix = "SVM nuclei method",
-        useCellBenderFeatures = useCellBenderFeatures
-      )
-    })
+    p6 <- safeGgdrawPanel(
+      function() {
+        plotSelectedCellsSmoothScatter(cell_features_labeled,
+          transcriptFeature = "num_retained_transcripts",
+          strTitlePrefix = "SVM nuclei method",
+          useCellBenderFeatures = useCellBenderFeatures
+        )
+      },
+      strTitle = "SVM nuclei method (post CBRB)",
+      reason = "selected nuclei density (post CBRB) plot unavailable"
+    )
   }
 
   return(list(
@@ -1456,11 +1527,27 @@ arrangeSVMCellSelectionPlotsNoCBRB <- function(
   # 5. Selected cell probability
   # 6. SmoothScatter final selection
 
+  # The success and failure paths of computeSvmGeneModuleScore() are
+  # expected to produce the same set of plot keys (see
+  # makeEmptyGeneModulePlots()), but fall back to a placeholder rather than
+  # indexing blindly, in case that key parity is ever broken.
+  getGeneModulePlotOrPlaceholder <- function(key) {
+    plot <- geneModulePlots[[key]]
+    if (is.null(plot)) {
+      plot <- makeFailedPlotPlaceholder(
+        strTitle = key,
+        reason = "gene module plot unavailable",
+        headline = "PLOT UNAVAILABLE"
+      )
+    }
+    plot
+  }
+
   pList <- list(
     plots[[2]],
-    geneModulePlots[["empty_gene_module_score_training_data"]] +
+    getGeneModulePlotOrPlaceholder("empty_gene_module_score_training_data") +
       custom_theme(),
-    geneModulePlots[["empty_gene_module_score"]] +
+    getGeneModulePlotOrPlaceholder("empty_gene_module_score") +
       custom_theme(),
     plots[[3]] + custom_theme(),
     plots[[4]] + custom_theme(),
@@ -1587,14 +1674,19 @@ getCellSelectionPlotTitle <- function(
   ), ]
 
   numSTAMPs <- dim(selected)[1]
-  readsPerUMI <- NA
+  comma_formatter <- scales::label_comma()
+
+  # No barcodes were classified as nucleus (e.g. the nucleus-vs-empty SVM
+  # could not be trained). The UMI/intronic/reads-per-UMI summary statistics
+  # below are undefined for an empty selection, so report 0 nuclei instead
+  # of formatting Inf/NaN.
+  if (numSTAMPs == 0) {
+    return(sprintf("%s\n0 Nuclei", strTitlePrefix))
+  }
 
   minNumUmis <- min(selected[[transcriptFeature]])
   medianUMI <- round(median(selected[[transcriptFeature]]))
   minIntronic <- min(selected$pct_intronic)
-  comma_formatter <- scales::label_comma()
-
-  readsPerUMI <- mean(selected$num_reads / selected[[transcriptFeature]])
 
   strTitle <- sprintf(
     "%s, intronic>=%.2f\n%s Nuclei, %d+ UMIs, medUMIs %s",
@@ -1605,6 +1697,7 @@ getCellSelectionPlotTitle <- function(
   # if the number of reads is available, add the average reads/UMI
   # to the title.
   if ("num_reads" %in% colnames(selected)) {
+    readsPerUMI <- mean(selected$num_reads / selected[[transcriptFeature]])
     strTitle <- sprintf(
       paste0(
         "%s, intronic >= %.2f\n%s Nuclei, %.1f reads/UMI,",
@@ -1928,12 +2021,6 @@ plotCellTypeIntervals <- function(
 plotSelectedCells <- function(cell_features_result, size = 0.25, alpha = 0.25) {
   strTitle <- "Selected Nuclei"
 
-  df <- cell_features_result[
-    which(cell_features_result[["barcode_class"]] == "nucleus"),
-  ]
-  umi_min_threshold <- min(log10(df[["num_transcripts"]]))
-  intronic_min_threshold <- min(df[["pct_intronic"]])
-
   plot_df <- cell_features_result
   plot_df$plot_class <- "other"
   plot_df$plot_class[
@@ -2033,8 +2120,11 @@ plotSelectedCellsSmoothScatter <- function(
   )
   df <- cell_features_filtered[cell_features_filtered$barcode_class == "nucleus" &
     cell_features_filtered[[transcriptFeature]] > 0, ]
-  umi_min_threshold <- min(df[[transcriptFeature]])
-  intronic_min_threshold <- min(df[["pct_intronic"]])
+  hasNucleusThresholds <- nrow(df) > 0
+  if (hasNucleusThresholds) {
+    umi_min_threshold <- min(df[[transcriptFeature]])
+    intronic_min_threshold <- min(df[["pct_intronic"]])
+  }
 
   if (changePar) {
     opar <- graphics::par(no.readonly = TRUE)
@@ -2054,8 +2144,10 @@ plotSelectedCellsSmoothScatter <- function(
     main = strTitle, line = 0.25,
     col.main = "black", cex.main = 0.65
   )
-  graphics::abline(v = log10(umi_min_threshold), col = "red", lty = 2)
-  graphics::abline(h = intronic_min_threshold, col = "red", lty = 2)
+  if (hasNucleusThresholds) {
+    graphics::abline(v = log10(umi_min_threshold), col = "red", lty = 2)
+    graphics::abline(h = intronic_min_threshold, col = "red", lty = 2)
+  }
 
   if (changePar) {
     graphics::par(opar)
@@ -2167,21 +2259,23 @@ plotCellProbabilities <- function(
 
 ####################### GENE MODULE PLOTS
 
-#' Build a placeholder plot for a gene module score that could not be computed.
+#' Build a placeholder plot for a plot that could not be computed.
 #'
 #' @param strTitle Title identifying which plot/module failed.
 #' @param reason A short human-readable explanation of the failure.
+#' @param headline A short bold headline describing the kind of failure.
 #' @return A ggplot2 object with no data, displaying the failure message.
 #' @noRd
 makeFailedPlotPlaceholder <- function(
   strTitle = "",
-  reason = "gene module score unavailable"
+  reason = "gene module score unavailable",
+  headline = "GENE MODULE SCORE FAILED"
 ) {
   ggplot() +
     ggplot2::annotate(
       "text",
       x = 0, y = 0.15,
-      label = "GENE MODULE SCORE FAILED",
+      label = headline,
       color = "red", fontface = "bold", size = 3
     ) +
     ggplot2::annotate(
@@ -2195,6 +2289,74 @@ makeFailedPlotPlaceholder <- function(
     ggtitle(strTitle) +
     theme_void() +
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+}
+
+#' Safely evaluate an expression that builds a ggplot2 panel.
+#'
+#' If the expression errors, or evaluates to `NULL`, a labelled placeholder
+#' plot is returned instead so that a single failing panel does not abort the
+#' whole page of plots.
+#'
+#' @param expr An expression (kept lazy) that builds a ggplot2 plot.
+#' @param strTitle Title identifying which plot failed, used on the
+#'   placeholder.
+#' @param reason A short human-readable explanation to show if `expr`
+#'   evaluates to `NULL` (ignored if `expr` throws, in which case the
+#'   condition message is used instead).
+#' @return The plot produced by `expr`, or a placeholder plot.
+#' @noRd
+safePlotPanel <- function(expr, strTitle = "", reason = "plot unavailable") {
+  result <- tryCatch(
+    expr,
+    error = function(e) {
+      log_warn(
+        "Plot [", strTitle, "] failed: ", conditionMessage(e)
+      )
+      NULL
+    }
+  )
+  if (is.null(result)) {
+    return(makeFailedPlotPlaceholder(
+      strTitle = strTitle,
+      reason = reason,
+      headline = "PLOT UNAVAILABLE"
+    ))
+  }
+  result
+}
+
+#' Safely draw a base-graphics panel produced by a `cowplot::ggdraw()`
+#' callback.
+#'
+#' `cowplot::ggdraw(function() ...)` defers evaluation of the drawing
+#' callback until the plot grid is rendered, i.e. while the output PDF device
+#' is already open. If the callback errors at that point, the whole page
+#' (including panels that already rendered successfully) is lost. This
+#' wraps the callback so a failure instead draws a labelled placeholder into
+#' the same grid cell using base graphics.
+#'
+#' @param drawFun A zero-argument function that draws to the current
+#'   graphics device (as passed to `cowplot::ggdraw()`).
+#' @param strTitle Title identifying which plot failed.
+#' @param reason A short human-readable explanation, used if `drawFun`
+#'   returns without error but the condition message is unavailable.
+#' @return A `cowplot::ggdraw()` object wrapping the guarded callback.
+#' @noRd
+safeGgdrawPanel <- function(drawFun, strTitle = "", reason = "plot unavailable") {
+  cowplot::ggdraw(function() {
+    tryCatch(
+      drawFun(),
+      error = function(e) {
+        log_warn(
+          "Plot [", strTitle, "] failed: ", conditionMessage(e)
+        )
+        graphics::plot.new()
+        graphics::title(main = strTitle)
+        graphics::text(0.5, 0.55, "PLOT UNAVAILABLE", col = "red", font = 2)
+        graphics::text(0.5, 0.4, conditionMessage(e), col = "grey30", cex = 0.7)
+      }
+    )
+  })
 }
 
 scatterPlotModuleScore <- function(
