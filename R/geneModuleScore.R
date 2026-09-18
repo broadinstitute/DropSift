@@ -49,7 +49,8 @@ computeSvmGeneModuleScore <- function(
     return(makeEmptyGeneModuleResult(
       cell_features_labeled = cell_features_labeled,
       module_score_name = module_score_name,
-      reason = "training_label_class column not found"
+      reason = "training_label_class column not found",
+      useCellBenderFeatures = useCellBenderFeatures
     ))
   }
 
@@ -78,7 +79,8 @@ computeSvmGeneModuleScore <- function(
         "too few exemplars (nucleus=", num_nuclei, ", ", negative_class,
         "=", num_negative, "; minimums are nucleus=", min_nucleus_exemplars,
         ", ", negative_class, "=", min_negative_exemplars, ")"
-      )
+      ),
+      useCellBenderFeatures = useCellBenderFeatures
     ))
   }
 
@@ -135,7 +137,8 @@ computeSvmGeneModuleScore <- function(
         "too few pseudobulked observations (nuclei=", num_pseudobulk_nuclei,
         ", ", negative_class, "=", num_pseudobulk_negative,
         "; minimum for each class is ", min_pseudobulk_observations, ")"
-      )
+      ),
+      useCellBenderFeatures = useCellBenderFeatures
     ))
   }
 
@@ -161,7 +164,8 @@ computeSvmGeneModuleScore <- function(
     return(makeEmptyGeneModuleResult(
       cell_features_labeled = cell_features_labeled,
       module_score_name = module_score_name,
-      reason = "no differentially expressed genes found"
+      reason = "no differentially expressed genes found",
+      useCellBenderFeatures = useCellBenderFeatures
     ))
   }
 
@@ -249,7 +253,8 @@ getNamedCount <- function(counts, name) {
 makeEmptyGeneModuleResult <- function(
   cell_features_labeled,
   module_score_name = "empty_gene_module_score",
-  reason = "gene module score unavailable"
+  reason = "gene module score unavailable",
+  useCellBenderFeatures = TRUE
 ) {
   list(
     score = rep(NA_real_, nrow(cell_features_labeled)),
@@ -257,7 +262,8 @@ makeEmptyGeneModuleResult <- function(
     moduleGeneTable = data.frame(),
     plots = makeEmptyGeneModulePlots(
       module_score_name = module_score_name,
-      reason = reason
+      reason = reason,
+      useCellBenderFeatures = useCellBenderFeatures
     ),
     valid = FALSE,
     reason = reason
@@ -320,7 +326,8 @@ generateGeneModulePlots <- function(
 makeEmptyGeneModulePlots <- function(
   module_score_name = "empty_gene_module_score",
   reason = "gene module score unavailable",
-  negative_class = "empty"
+  negative_class = "empty",
+  useCellBenderFeatures = TRUE
 ) {
   p_failed <- makeFailedPlotPlaceholder(
     strTitle = module_score_name,
@@ -331,7 +338,11 @@ makeEmptyGeneModulePlots <- function(
   result[[paste0(module_score_name, "_training_data")]] <- p_failed
   result[[module_score_name]] <- p_failed
 
-  if (module_score_name == "empty_gene_module_score") {
+  # Mirror generateGeneModulePlots(): these two extra plots are only ever
+  # produced on the success path when useCellBenderFeatures is TRUE, so the
+  # failure path should not emit them otherwise (they would be spurious
+  # placeholders for plots that were never requested).
+  if (useCellBenderFeatures && module_score_name == "empty_gene_module_score") {
     result[["frac_contamination"]] <- makeFailedPlotPlaceholder(
       strTitle = "frac_contamination",
       reason = paste0(module_score_name, " unavailable: ", reason)

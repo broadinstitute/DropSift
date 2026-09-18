@@ -15,7 +15,10 @@ getCBRBArgs(svmNucleusCaller)
 SvmNucleusCaller(useCBRBFeatures=FALSE)}
 }
 \value{
-a list with two elements: total_droplets_included and expected_cells
+a list with two elements: total_droplets_included and
+expected_cells. Both are \code{NA} if the CBRB arguments could not be
+estimated, for example because no barcodes were classified as nucleus
+or no empty exemplars were found.
 }
 \description{
 After running the SVM with useCBRBFeatures=FALSE, get an estimate for

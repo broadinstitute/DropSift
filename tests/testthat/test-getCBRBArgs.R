@@ -10,7 +10,7 @@ test_that("CBRB argument estimation", {
   )
   cbrbArgs <- getCBRBArgs(svmNucleusCaller)
   expect_equal(cbrbArgs, list(
-    total_droplets_included = 2195,
+    total_droplets_included = 946,
     expected_cells = 372
   ))
 })

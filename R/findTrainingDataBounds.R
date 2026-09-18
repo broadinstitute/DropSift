@@ -47,9 +47,11 @@
 #'   initialization path to estimate empty and nucleus exemplar bounds. If
 #'   `FALSE`, use the default density-based initialization, which can also
 #'   identify debris exemplars.
-#' @param forceTwoClusterSolution Logical scalar. If `TRUE`, attempt to find a
-#'   two-cluster solution by separating the two highest-density peaks. This can
-#'   help overloaded datasets but may be suboptimal for typical datasets.
+#' @param forceTwoClusterSolution Logical scalar. If `TRUE`, unconditionally
+#'   use the two-cluster solution (separating the two highest-density peaks)
+#'   instead of the default solution. This is a manual override; see
+#'   `twoClusterFallbackRatio` for the automatic alternative used when this is
+#'   `FALSE`.
 #' @param intronic_floor_fraction Numeric scalar. Multiplier applied to the
 #'   empty droplet intronic lower bound when computing the observed intronic
 #'   floor used to remove low-intronic debris from the candidate nucleus
@@ -61,6 +63,18 @@
 #' @param use2DTrainingRefinement Logical scalar. If `TRUE`, refine default
 #'   density-based empty and nucleus exemplar selections with a two-dimensional
 #'   HDR component selection. This is experimental and is not applied to debris.
+#' @param twoClusterFallbackRatio Numeric scalar or `NULL`. Ignored when
+#'   `forceTwoClusterSolution` is `TRUE`. Otherwise, the two-cluster solution
+#'   is adopted only when its silhouette score is at least this many times the
+#'   default solution's silhouette score. A large ratio (rather than simply
+#'   preferring whichever solution scores higher) is what prevents a
+#'   degenerate two-cluster solution from being adopted over a default
+#'   solution that is merely mediocre rather than actually wrong. Since
+#'   silhouette width cannot exceed 1, the two-cluster solution is only ever
+#'   computed when the default solution's silhouette is at most
+#'   `1 / twoClusterFallbackRatio` (0.5 at the default ratio of 2); above that,
+#'   no two-cluster candidate could possibly meet the threshold. Set to `NULL`
+#'   to disable the automatic fallback and always use the default solution.
 #' @param verbose Logical scalar. If `TRUE`, emit diagnostic log messages.
 #'
 #' @return A list containing exemplar bounds and selected training barcode
@@ -75,13 +89,12 @@ findTrainingDataBounds <- function(
   cell_features, max_umis_empty = 50,
   useCBRBInitialization = TRUE, forceTwoClusterSolution = FALSE,
   intronic_floor_fraction = 0.9, debris_pct_intronic_prior = 0.25,
-  use2DTrainingRefinement = FALSE, verbose = FALSE
+  use2DTrainingRefinement = FALSE, twoClusterFallbackRatio = 2,
+  verbose = FALSE
 ) {
   # If using CBRB initialization, use the CBRB-specific bounds method.
   if (useCBRBInitialization) {
-    return(findTrainingDataBoundsCBRB(cell_features,
-      max_umis_empty = max_umis_empty
-    ))
+    return(findTrainingDataBoundsCBRB(cell_features))
   }
 
   # A lower UMI threshold is used for some cases.
@@ -95,15 +108,143 @@ findTrainingDataBounds <- function(
       max_umis_empty_off, intronic_floor_fraction,
       debris_pct_intronic_prior, use2DTrainingRefinement, verbose
     ))
-  } else {
-    # Otherwise, use a more general approach with empty droplet fraction
-    # constraints.
-    return(findDefaultSolution(
-      cell_features, max_umis_empty,
-      max_umis_empty_off, intronic_floor_fraction,
-      debris_pct_intronic_prior, use2DTrainingRefinement, verbose
-    ))
   }
+
+  # Otherwise, use a more general approach with empty droplet fraction
+  # constraints.
+  defaultResult <- findDefaultSolution(
+    cell_features, max_umis_empty,
+    max_umis_empty_off, intronic_floor_fraction,
+    debris_pct_intronic_prior, use2DTrainingRefinement, verbose
+  )
+
+  selectWithAutomaticTwoClusterFallback(
+    defaultResult = defaultResult,
+    cell_features = cell_features,
+    max_umis_empty = max_umis_empty,
+    max_umis_empty_off = max_umis_empty_off,
+    intronic_floor_fraction = intronic_floor_fraction,
+    debris_pct_intronic_prior = debris_pct_intronic_prior,
+    use2DTrainingRefinement = use2DTrainingRefinement,
+    twoClusterFallbackRatio = twoClusterFallbackRatio,
+    verbose = verbose
+  )
+}
+
+#' Automatically fall back to a two-cluster solution when the default
+#' solution's exemplar separation is poor.
+#'
+#' The default (`PitAfterHighestPeak`) and two-cluster (`PitBetweenHighestPeaks`)
+#' UMI-threshold methods are both vulnerable to being misled by a secondary,
+#' near-ambient density mode ("shoulder") sitting between the empty-droplet
+#' cloud and the true nucleus population. When the default solution's
+#' silhouette score is low, this usually means its nucleus exemplar region was
+#' diluted by that shoulder. In that case, this function also computes the
+#' two-cluster solution and adopts it only if its silhouette score is at least
+#' `twoClusterFallbackRatio` times the default's. Requiring a large ratio
+#' (rather than simply preferring whichever solution scores higher) is what
+#' protects against a degenerate two-cluster solution (for example, one that
+#' isolates only a handful of extreme high-UMI barcodes) being adopted over a
+#' default solution that is merely mediocre rather than actually wrong.
+#'
+#' @noRd
+selectWithAutomaticTwoClusterFallback <- function(
+  defaultResult, cell_features, max_umis_empty, max_umis_empty_off,
+  intronic_floor_fraction, debris_pct_intronic_prior,
+  use2DTrainingRefinement, twoClusterFallbackRatio, verbose
+) {
+  if (is.null(twoClusterFallbackRatio) || !is.finite(twoClusterFallbackRatio)) {
+    return(defaultResult)
+  }
+
+  defaultSilhouette <- defaultResult$best_silhouette
+
+  # Silhouette width is bounded above by 1. The two-cluster candidate can only
+  # meet the ratio threshold if twoClusterSilhouette >= twoClusterFallbackRatio
+  # * defaultSilhouette, and since twoClusterSilhouette can never exceed 1,
+  # that is impossible once defaultSilhouette exceeds 1 / twoClusterFallbackRatio
+  # (e.g. 0.5 at the default ratio of 2). Skip the (expensive) two-cluster
+  # search entirely in that case.
+  maxPossibleSilhouette <- 1
+  skipThreshold <- maxPossibleSilhouette / twoClusterFallbackRatio
+  if (isUsableSilhouette(defaultSilhouette) &&
+    defaultSilhouette > skipThreshold) {
+    log_info(
+      "Automatic two-cluster fallback skipped: default silhouette [",
+      round(defaultSilhouette, 3), "] already exceeds the maximum possible ",
+      "silhouette [", maxPossibleSilhouette, "] divided by the required ",
+      "ratio [", twoClusterFallbackRatio, "] (", round(skipThreshold, 3),
+      "); no two-cluster candidate could satisfy the threshold. Keeping ",
+      "default selection."
+    )
+    return(defaultResult)
+  }
+
+  twoClusterResult <- findTwoClusterSolution(
+    cell_features, max_umis_empty, max_umis_empty_off,
+    intronic_floor_fraction, debris_pct_intronic_prior,
+    use2DTrainingRefinement, verbose
+  )
+
+  twoClusterSilhouette <- twoClusterResult$best_silhouette
+
+  if (!isUsableSilhouette(twoClusterSilhouette)) {
+    log_info(
+      "Automatic two-cluster fallback: two-cluster candidate is unusable; ",
+      "keeping default selection [", defaultResult$method, "]."
+    )
+    return(defaultResult)
+  }
+
+  if (!isUsableSilhouette(defaultSilhouette)) {
+    log_info(
+      "Automatic two-cluster fallback: default selection has no usable ",
+      "silhouette score; using two-cluster selection [",
+      twoClusterResult$method, "] instead."
+    )
+    return(twoClusterResult)
+  }
+
+  if (defaultSilhouette <= 0) {
+    if (twoClusterSilhouette > 0) {
+      log_info(
+        "Automatic two-cluster fallback: default silhouette [",
+        round(defaultSilhouette, 3), "] is non-positive; using two-cluster ",
+        "selection [", twoClusterResult$method, "] silhouette [",
+        round(twoClusterSilhouette, 3), "] instead."
+      )
+      return(twoClusterResult)
+    }
+    return(defaultResult)
+  }
+
+  ratio <- twoClusterSilhouette / defaultSilhouette
+
+  if (ratio >= twoClusterFallbackRatio) {
+    log_info(
+      "Automatic two-cluster fallback engaged: default [",
+      defaultResult$method, "] silhouette [", round(defaultSilhouette, 3),
+      "] vs two-cluster [", twoClusterResult$method, "] silhouette [",
+      round(twoClusterSilhouette, 3), "] (ratio [", round(ratio, 2),
+      "] >= threshold [", twoClusterFallbackRatio, "]). Using the ",
+      "two-cluster solution."
+    )
+    return(twoClusterResult)
+  }
+
+  log_info(
+    "Automatic two-cluster fallback not engaged: default [",
+    defaultResult$method, "] silhouette [", round(defaultSilhouette, 3),
+    "] vs two-cluster [", twoClusterResult$method, "] silhouette [",
+    round(twoClusterSilhouette, 3), "] (ratio [", round(ratio, 2),
+    "] < threshold [", twoClusterFallbackRatio, "]). Keeping default ",
+    "selection."
+  )
+  defaultResult
+}
+
+isUsableSilhouette <- function(x) {
+  !is.null(x) && length(x) == 1 && is.finite(x)
 }
 
 findTwoClusterSolution <- function(
@@ -272,7 +413,7 @@ selectBestTrainingBoundsModel <- function(
 # SIMPLE CBRB
 #############################
 findTrainingDataBoundsCBRB <- function(
-  cell_features, max_umis_empty = 50,
+  cell_features, max_umis_empty = 20,
   maxContaminationThreshold = 0.1
 ) {
   # the interval for empty cells for training data explicitly avoid
