@@ -88,3 +88,7 @@ COPY . /app
 
 # Install the package itself without reinstalling dependencies.
 RUN R -e "remotes::install_local('/app', dependencies = FALSE)"
+
+# Write the version information
+ARG SRCVERSION=unknown
+RUN printf '%s\n' "$SRCVERSION" > /etc/dropseq-version
