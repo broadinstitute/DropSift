@@ -95,6 +95,11 @@ contaminationColName <- "frac_contamination"
 #'   1 / twoClusterFallbackRatio (0.5 at the default ratio of 2); above that,
 #'   no two-cluster candidate could possibly meet the threshold. Set to NULL
 #'   to disable the automatic fallback and always use the default solution.
+#' @param callDebris When true (the default), debris barcodes are identified
+#'   using a debris gene module score and additional SVMs, and nucleus
+#'   probabilities also account for the nucleus-vs-debris SVM. When false, only
+#'   the nucleus-vs-empty SVM is trained and no barcodes are classified as
+#'   debris.
 #' @param datasetName A string to identify the dataset in plots.
 #' @return An SvmNucleusCaller object
 #' @seealso [configureFeatureColumns()]
@@ -121,7 +126,7 @@ SvmNucleusCaller <- function(
   cellProbabilityThreshold = NULL, maxUmisEmpty = 50, featureColumns = NULL,
   forceTwoClusterSolution = FALSE, useCBRBFeatures = TRUE,
   useCBRBInitialization = useCBRBFeatures, use2DTrainingRefinement = FALSE,
-  twoClusterFallbackRatio = 2,
+  twoClusterFallbackRatio = 2, callDebris = TRUE,
   datasetName = ""
 ) {
   if (useCBRBInitialization == TRUE & useCBRBFeatures == FALSE) {
@@ -146,6 +151,7 @@ SvmNucleusCaller <- function(
   stopifnot(is.character(datasetName))
   stopifnot(is.logical(useCBRBFeatures))
   stopifnot(is.logical(use2DTrainingRefinement))
+  stopifnot(is.logical(callDebris))
   stopifnot(is.null(twoClusterFallbackRatio) ||
     (is.numeric(twoClusterFallbackRatio) && twoClusterFallbackRatio > 0))
 
@@ -191,7 +197,8 @@ SvmNucleusCaller <- function(
     useCBRBInitialization = useCBRBInitialization,
     forceTwoClusterSolution = forceTwoClusterSolution,
     use2DTrainingRefinement = use2DTrainingRefinement,
-    twoClusterFallbackRatio = twoClusterFallbackRatio
+    twoClusterFallbackRatio = twoClusterFallbackRatio,
+    callDebris = callDebris
   )
 
   results$cell_features <- data.frame(

@@ -17,6 +17,7 @@ runIntronicSVM(
   forceTwoClusterSolution = FALSE,
   use2DTrainingRefinement = FALSE,
   twoClusterFallbackRatio = 2,
+  callDebris = TRUE,
   outPDF = NULL,
   outFeaturesFile = NULL,
   outCellBenderInitialParameters = NULL,
@@ -96,6 +97,13 @@ computed when the default solution's silhouette is at most
 1 / twoClusterFallbackRatio (0.5 at the default ratio of 2); above that,
 no two-cluster candidate could possibly meet the threshold. Set to NULL
 to disable the automatic fallback and always use the default solution.}
+
+\item{callDebris}{When true (the default), debris barcodes are identified
+using a debris gene module score and additional SVMs, and nucleus
+probabilities also account for the nucleus-vs-debris SVM. When false, only
+the nucleus-vs-empty SVM is trained and no barcodes are classified as
+debris.  Initialization of empty barcodes, nuclei, and debris exemplars is
+evaluated the same way regardless of this flag.}
 
 \item{outPDF}{The PDF file to write the plots to.}
 

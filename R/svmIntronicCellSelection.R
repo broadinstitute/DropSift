@@ -72,6 +72,12 @@ log10_UMI_AXIS_RANGE_NEW <- c(log10(MIN_UMIs_PER_STAMP), 6) # for plotting
 #'   1 / twoClusterFallbackRatio (0.5 at the default ratio of 2); above that,
 #'   no two-cluster candidate could possibly meet the threshold. Set to NULL
 #'   to disable the automatic fallback and always use the default solution.
+#' @param callDebris When true (the default), debris barcodes are identified
+#'   using a debris gene module score and additional SVMs, and nucleus
+#'   probabilities also account for the nucleus-vs-debris SVM. When false, only
+#'   the nucleus-vs-empty SVM is trained and no barcodes are classified as
+#'   debris.  Initialization of empty barcodes, nuclei, and debris exemplars is
+#'   evaluated the same way regardless of this flag.
 #' @param outPDF The PDF file to write the plots to.
 #' @param outFeaturesFile The cell features dataframe, further annotated by the
 #'   SVM to include the cell probability and label, along with which cell
@@ -126,7 +132,7 @@ runIntronicSVM <- function(
   max_umis_empty = 50, features = NULL, useCBRBFeatures = TRUE,
   useCBRBInitialization = useCBRBFeatures,
   forceTwoClusterSolution = FALSE, use2DTrainingRefinement = FALSE,
-  twoClusterFallbackRatio = 2,
+  twoClusterFallbackRatio = 2, callDebris = TRUE,
   outPDF = NULL, outFeaturesFile = NULL,
   outCellBenderInitialParameters = NULL,
   random.seed = NA
@@ -152,6 +158,7 @@ runIntronicSVM <- function(
     forceTwoClusterSolution = forceTwoClusterSolution,
     use2DTrainingRefinement = use2DTrainingRefinement,
     twoClusterFallbackRatio = twoClusterFallbackRatio,
+    callDebris = callDebris,
     useCBRBFeatures = useCBRBFeatures,
     useCBRBInitialization = useCBRBInitialization,
     datasetName = datasetName
@@ -230,7 +237,8 @@ callByIntronicSVM <- function(
   dataset_name, cell_features, dgeMatrix,
   cellProbabilityThreshold = NULL, max_umis_empty = 50,
   features, useCBRBInitialization = TRUE, forceTwoClusterSolution = FALSE,
-  use2DTrainingRefinement = FALSE, twoClusterFallbackRatio = 2
+  use2DTrainingRefinement = FALSE, twoClusterFallbackRatio = 2,
+  callDebris = TRUE
 ) {
   validateFeaturePresence(cell_features, features)
   maxContaminationThreshold <- 0.1 # CBRB-specific contamination threshold
@@ -298,21 +306,31 @@ callByIntronicSVM <- function(
     )
   }
 
-  debris_module_result <- computeSvmGeneModuleScore(
-    cell_features_labeled = cell_features_labeled,
-    dgeMatrix = dgeMatrix,
-    numGenes = 100,
-    useCellBenderFeatures = useCellBenderFeatures,
-    negative_class = "debris",
-    min_nucleus_exemplars = 100,
-    min_negative_exemplars = 100,
-    verbose = FALSE
-  )
+  if (callDebris) {
+    debris_module_result <- computeSvmGeneModuleScore(
+      cell_features_labeled = cell_features_labeled,
+      dgeMatrix = dgeMatrix,
+      numGenes = 100,
+      useCellBenderFeatures = useCellBenderFeatures,
+      negative_class = "debris",
+      min_nucleus_exemplars = 100,
+      min_negative_exemplars = 100,
+      verbose = FALSE
+    )
+  } else {
+    log_info(
+      "Debris calling disabled; only the nucleus-vs-empty SVM will be trained"
+    )
+    debris_module_result <- list(
+      score = NA_real_, valid = FALSE, plots = NULL,
+      downGenes = NULL, moduleGeneTable = data.frame()
+    )
+  }
 
   cell_features_labeled$debris_gene_module_score <-
     debris_module_result$score
 
-  if (!debris_module_result$valid) {
+  if (callDebris && !debris_module_result$valid) {
     degraded_warnings <- c(
       degraded_warnings,
       paste0("debris gene module score unavailable (", debris_module_result$reason, ")")
