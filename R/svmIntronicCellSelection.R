@@ -203,13 +203,32 @@ runIntronicSVM <- function(
 
   # write initial cellbender remove-background parameters to file
   if (!is.null(outCellBenderInitialParameters)) {
-    cbrbArgs <- getCBRBArgs(svmNucleusCaller)
-    result <- data.frame(cbrbArgs)
-    write.table(result, outCellBenderInitialParameters,
-      row.names = FALSE,
-      col.names = TRUE, quote = FALSE, sep = "\t"
-    )
+    writeCBRBInitialParameters(svmNucleusCaller, outCellBenderInitialParameters)
   }
+}
+
+# Write the initial CellBender remove-background parameters to a file. If any
+# parameter could not be estimated (NA), exit with status 1 after writing so
+# the calling process knows to skip downstream pipeline steps.
+writeCBRBInitialParameters <- function(svmNucleusCaller, outFile) {
+  cbrbArgs <- getCBRBArgs(svmNucleusCaller)
+  write.table(data.frame(cbrbArgs), outFile,
+    row.names = FALSE,
+    col.names = TRUE, quote = FALSE, sep = "\t"
+  )
+
+  if (anyNA(cbrbArgs)) {
+    log_error(
+      "CellBender initial parameters could not be estimated (NA values); ",
+      "exiting with status 1."
+    )
+    exitWithStatus(1L)
+  }
+}
+
+# Thin wrapper around quit() so tests can mock process termination.
+exitWithStatus <- function(status) {
+  quit(save = "no", status = status)
 }
 
 #' Select cells using an SVM trained on cell summary features

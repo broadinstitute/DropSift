@@ -113,8 +113,10 @@ test_that("runIntronicSVM warns instead of erroring when the nucleus-vs-empty SV
   data(svmNucleusCallerInputs)
   set.seed(1)
 
+  exitStatus <- NULL
   testthat::local_mocked_bindings(
-    runBinarySVM = function(...) NULL
+    runBinarySVM = function(...) NULL,
+    exitWithStatus = function(status) exitStatus <<- status
   )
 
   tempDir <- tempdir()
@@ -145,4 +147,35 @@ test_that("runIntronicSVM warns instead of erroring when the nucleus-vs-empty SV
   cbrbResult <- read.delim(outCbrbFile)
   expect_true(is.na(cbrbResult$total_droplets_included))
   expect_true(is.na(cbrbResult$expected_cells))
+  # NA CellBender parameters must signal failure to downstream pipelines.
+  expect_identical(exitStatus, 1L)
+})
+
+test_that("runIntronicSVM does not exit when the CellBender parameters are estimated", {
+  data(svmNucleusCallerInputs)
+  set.seed(1)
+
+  exitStatus <- NULL
+  testthat::local_mocked_bindings(
+    exitWithStatus = function(status) exitStatus <<- status
+  )
+
+  tempDir <- tempdir()
+  writeExampleSvmNucleusCallerInputs(tempDir)
+  cellFeaturesFile <- writeExampleCellFeatures(tempDir)
+  outCbrbFile <- tempfile(fileext = ".tsv")
+
+  # The example data has no debris exemplars, which emits an unrelated
+  # "degraded result" warning; it is irrelevant to this test.
+  suppressWarnings(runIntronicSVM(
+    datasetName = "cbrb_ok_dataset",
+    cellFeaturesFile = cellFeaturesFile,
+    dgeMatrixFile = tempDir,
+    useCBRBFeatures = FALSE,
+    outCellBenderInitialParameters = outCbrbFile,
+    random.seed = 1
+  ))
+
+  expect_false(anyNA(read.delim(outCbrbFile)))
+  expect_null(exitStatus)
 })
